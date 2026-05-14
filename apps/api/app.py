@@ -1,0 +1,53 @@
+"""
+API Flask: healthcheck, CORS hacia WEB_ORIGIN y endpoints versionados
+(Fase 2: JWT Supabase; Fase 3: documentos + Storage con service_role; Fase 5: agente + LangSmith opcional).
+"""
+
+import os
+
+from flask import Flask, jsonify
+from flask_cors import CORS
+
+from routes.agent import bp as agent_bp
+from routes.documents import bp as documents_bp
+from routes.v1 import bp as v1_bp
+
+
+def create_app() -> Flask:
+    app = Flask(__name__)
+
+    try:
+        max_upload = int(os.environ.get("MAX_UPLOAD_BYTES", "5242880").strip())
+    except ValueError:
+        max_upload = 5_242_880
+    # Margen para límites multipart (boundary + campos de formulario).
+    app.config["MAX_CONTENT_LENGTH"] = max_upload + 256 * 1024
+
+    web_origin = os.environ.get("WEB_ORIGIN", "").strip()
+    if web_origin:
+        origins = [o.strip() for o in web_origin.split(",") if o.strip()]
+        CORS(
+            app,
+            resources={
+                r"/*": {
+                    "origins": origins,
+                    "allow_headers": ["Authorization", "Content-Type", "X-Tenant-Id"],
+                }
+            },
+        )
+    else:
+        # Sin WEB_ORIGIN no se habilita CORS (desarrollo local puede usar mismo origen o proxy).
+        pass
+
+    app.register_blueprint(v1_bp)
+    app.register_blueprint(documents_bp)
+    app.register_blueprint(agent_bp)
+
+    @app.get("/health")
+    def health():
+        return jsonify({"status": "ok"})
+
+    return app
+
+
+app = create_app()

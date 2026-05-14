@@ -1,0 +1,21 @@
+# Blueprint Render: servicio web gratuito para la API Flask.
+# Sustituir <repo-url> conectando el repositorio desde el dashboard si aplica.
+services:
+  - type: web
+    name: workyai-api
+    runtime: python
+    plan: free
+    rootDir: apps/api
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    healthCheckPath: /health
+    envVars:
+      - key: WEB_ORIGIN
+        sync: false
+        # Valor: URL de producción de Vercel (p. ej. https://<proyecto>.vercel.app)
+      - key: SUPABASE_URL
+        sync: false
+        # Placeholder hasta Fase 2: URL del proyecto Supabase
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+        # Secreto de servicio; solo en Render, nunca en NEXT_PUBLIC_*
