@@ -1,4 +1,5 @@
 # Pinned al ejecutar Fase 2 (PyPI). Runtime Python: ver documentación actual de Render.
+cryptography==48.0.0
 Flask==3.1.3
 gunicorn==26.0.0
 flask-cors==6.0.2

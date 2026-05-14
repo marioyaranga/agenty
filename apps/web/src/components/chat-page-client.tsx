@@ -207,6 +207,13 @@ export function ChatPageClient({ tenants }: { tenants: TenantOption[] }) {
 
       <p className="text-sm text-muted-foreground">
         <Link
+          href="/settings"
+          className="font-medium text-foreground underline-offset-4 hover:underline"
+        >
+          Configuración
+        </Link>
+        {" · "}
+        <Link
           href="/documents"
           className="font-medium text-foreground underline-offset-4 hover:underline"
         >

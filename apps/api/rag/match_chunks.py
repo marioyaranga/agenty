@@ -16,9 +16,10 @@ def match_document_chunks(
     query: str,
     match_count: int = 8,
     min_similarity: float = 0.25,
+    api_key: str | None = None,
 ) -> list[dict[str, Any]]:
     """Devuelve filas del RPC `match_document_chunks` (chunk_id, document_id, heading_path, body, similarity)."""
-    vec = embed_texts([query])[0]
+    vec = embed_texts([query], api_key=api_key, client=client, tenant_id=tenant_id)[0]
     match_count = max(1, min(int(match_count), 200))
     min_similarity = max(0.0, min(float(min_similarity), 1.0))
     rpc = client.rpc(

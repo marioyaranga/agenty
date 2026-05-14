@@ -77,7 +77,7 @@ def sync_index_markdown_document(
 
     bodies = [d.body for d in drafts]
     try:
-        vectors = embed_texts(bodies)
+        vectors = embed_texts(bodies, client=client, tenant_id=tenant_id)
     except Exception as exc:  # noqa: BLE001 — API/SDK heterogénea
         return "failed", f"Fallo al generar embeddings: {exc}"
 

@@ -33,6 +33,7 @@ def insert_agent_step(
     step_index: int,
     payload: dict[str, Any],
 ) -> None:
+    """Inserta un paso; `step_index` debe ser único por `run_id` (Fase 7: UNIQUE run_id+step_index)."""
     client.table("agent_steps").insert(
         {
             "run_id": run_id,

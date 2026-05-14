@@ -1,1 +1,1 @@
-"""Agente conversacional Fase 5 (LangGraph mínimo retrieve → generate)."""
+"""Agente conversacional (LangGraph: recuperación, reescritura opcional, generación o sin contexto)."""

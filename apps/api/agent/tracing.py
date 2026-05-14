@@ -7,6 +7,40 @@ from contextlib import contextmanager
 from typing import Any, Iterator
 
 
+@contextmanager
+def traced_graph_node(
+    parent: Any | None,
+    *,
+    name: str,
+    inputs: dict[str, Any],
+) -> Iterator[tuple[Any | None, dict[str, Any]]]:
+    """Span hijo bajo el run raíz; los fallos de tracing no tumban el nodo (solo se omiten spans)."""
+    holder: dict[str, Any] = {}
+    ch: Any | None = None
+    if parent is not None:
+        try:
+            ch = parent.create_child(name, run_type="chain", inputs=inputs)
+            ch.post(exclude_child_runs=True)
+        except Exception:  # noqa: BLE001
+            ch = None
+    try:
+        yield ch, holder
+        if ch is not None:
+            try:
+                ch.end(outputs=holder.get("outputs") or {})
+                ch.patch()
+            except Exception:  # noqa: BLE001
+                pass
+    except Exception as exc:
+        if ch is not None:
+            try:
+                ch.end(outputs={}, error=str(exc)[:8000])
+                ch.patch()
+            except Exception:  # noqa: BLE001
+                pass
+        raise
+
+
 def langsmith_api_key_configured() -> bool:
     return bool(
         (os.environ.get("LANGCHAIN_API_KEY") or os.environ.get("LANGSMITH_API_KEY") or "").strip()

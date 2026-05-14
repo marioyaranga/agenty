@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { DashboardClientShell } from "@/components/dashboard-client-shell";
+import { SettingsPageClient } from "@/components/settings-page-client";
 import { LogoutButton } from "@/components/logout-button";
 import { createClient } from "@/lib/supabase/server";
 import type { TenantOption } from "@/lib/types/tenant";
@@ -13,7 +13,7 @@ type MembershipRow = {
   tenants: { id: string; name: string } | { id: string; name: string }[] | null;
 };
 
-export default async function DashboardPage() {
+export default async function SettingsPage() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -43,37 +43,22 @@ export default async function DashboardPage() {
       <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 px-6 py-16">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex flex-col gap-1">
-            <p className="text-sm text-muted-foreground">workyAI · Fase 2</p>
+            <p className="text-sm text-muted-foreground">workyAI · Configuración</p>
             <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-              Panel
+              IA del espacio
             </h1>
             <p className="text-sm text-muted-foreground">
-              Sesión iniciada como{" "}
+              Sesión:{" "}
               <span className="font-medium text-foreground">{user?.email}</span>
-            </p>
-            <p className="font-mono text-xs text-muted-foreground">
-              id: {user?.id}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <LogoutButton />
             <Link
-              href="/chat"
+              href="/dashboard"
               className="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-2.5 text-sm font-medium text-foreground hover:bg-muted"
             >
-              Chat
-            </Link>
-            <Link
-              href="/documents"
-              className="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-2.5 text-sm font-medium text-foreground hover:bg-muted"
-            >
-              Documentos
-            </Link>
-            <Link
-              href="/settings"
-              className="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-2.5 text-sm font-medium text-foreground hover:bg-muted"
-            >
-              Configuración
+              Panel
             </Link>
             {showAuditNav ? (
               <Link
@@ -83,12 +68,6 @@ export default async function DashboardPage() {
                 Auditoría
               </Link>
             ) : null}
-            <Link
-              href="/"
-              className="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-2.5 text-sm font-medium text-foreground hover:bg-muted"
-            >
-              Inicio
-            </Link>
           </div>
         </header>
 
@@ -98,7 +77,7 @@ export default async function DashboardPage() {
           </p>
         ) : null}
 
-        <DashboardClientShell tenants={tenants} />
+        <SettingsPageClient tenants={tenants} />
       </main>
     </div>
   );

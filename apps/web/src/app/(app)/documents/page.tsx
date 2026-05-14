@@ -34,6 +34,10 @@ export default async function DocumentsPage() {
     };
   });
 
+  const showAuditNav = tenants.some(
+    (t) => t.role === "owner" || t.role === "admin",
+  );
+
   return (
     <div className="flex flex-1 flex-col bg-background">
       <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 px-6 py-16">
@@ -66,6 +70,14 @@ export default async function DocumentsPage() {
             >
               Panel
             </Link>
+            {showAuditNav ? (
+              <Link
+                href="/audit"
+                className="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-2.5 text-sm font-medium text-foreground hover:bg-muted"
+              >
+                Auditoría
+              </Link>
+            ) : null}
             <Link
               href="/"
               className="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-2.5 text-sm font-medium text-foreground hover:bg-muted"

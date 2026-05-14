@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
@@ -103,14 +104,22 @@ export function DashboardClientShell({ tenants }: { tenants: TenantOption[] }) {
           <p className="text-sm font-medium text-foreground">
             Prueba con el API (Bearer + X-Tenant-Id)
           </p>
-          <Button
-            type="button"
-            size="sm"
-            disabled={loading || !activeTenantId}
-            onClick={() => void callMe()}
-          >
-            {loading ? "Consultando…" : "GET /v1/me"}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/settings"
+              className="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-2.5 text-sm font-medium text-foreground hover:bg-muted"
+            >
+              Configuración
+            </Link>
+            <Button
+              type="button"
+              size="sm"
+              disabled={loading || !activeTenantId}
+              onClick={() => void callMe()}
+            >
+              {loading ? "Consultando…" : "GET /v1/me"}
+            </Button>
+          </div>
         </div>
         {meError ? (
           <p className="text-sm text-destructive" role="alert">

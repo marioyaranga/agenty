@@ -46,3 +46,6 @@ yarn-error.log*
 
 # Vercel / local
 .vercel
+
+# Cursor (workspace local)
+.cursor/
