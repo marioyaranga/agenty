@@ -1,14 +1,14 @@
-"""Endpoint POST /v1/tenants/<tenant_id>/agent/chat (JWT + X-Tenant-Id + membresía)."""
+"""Endpoint POST /v1/tenants/<tenant_id>/agent/chat (JWT + X-Tenant-Id + membresía).
+
+Fase 8: al completar o fallar el run, se inserta notificación in-app para el usuario (`in_app_notifications`).
+"""
 
 from __future__ import annotations
 
-import os
 import uuid
 from typing import Any
 
-import jwt
 from flask import Blueprint, jsonify, request
-from supabase import Client, create_client
 
 from agent.graph import build_agent_graph
 from agent.persistence import finalize_agent_run, insert_agent_run
@@ -18,88 +18,38 @@ from agent.tracing import (
     optional_langsmith_root,
     trace_id_for_persistence,
 )
-from auth_jwt import verify_supabase_jwt
+from audit_log import record_audit
+from gemini_keys import get_gemini_api_key_for_tenant
+from notifications import notify_agent_chat_outcome
+from tenant_http import (
+    admin_supabase_client,
+    membership_role,
+    parse_uuid,
+    require_bearer_jwt,
+    require_matching_tenant_header,
+)
 
 bp = Blueprint("agent", __name__, url_prefix="/v1")
 
 
-def _admin_client() -> Client:
-    url = os.environ["SUPABASE_URL"].strip()
-    key = os.environ["SUPABASE_SERVICE_ROLE_KEY"].strip()
-    return create_client(url, key)
-
-
-def _require_bearer_jwt() -> tuple[dict[str, Any] | None, tuple[Any, int] | None]:
-    auth = request.headers.get("Authorization", "")
-    prefix = "Bearer "
-    if not auth.startswith(prefix):
-        return None, (jsonify({"error": "Se requiere Authorization: Bearer"}), 401)
-    token = auth[len(prefix) :].strip()
-    if not token:
-        return None, (jsonify({"error": "Token vacío"}), 401)
-    try:
-        claims = verify_supabase_jwt(token)
-    except jwt.ExpiredSignatureError:
-        return None, (jsonify({"error": "Token expirado"}), 401)
-    except jwt.InvalidAudienceError:
-        return None, (jsonify({"error": "Audiencia inválida"}), 401)
-    except jwt.InvalidIssuerError:
-        return None, (jsonify({"error": "Emisor inválido"}), 401)
-    except jwt.PyJWTError:
-        return None, (jsonify({"error": "Token inválido"}), 401)
-    return claims, None
-
-
-def _parse_uuid(value: str, field: str) -> tuple[str | None, tuple[Any, int] | None]:
-    try:
-        uuid.UUID(value)
-    except ValueError:
-        return None, (jsonify({"error": f"{field} debe ser un UUID"}), 400)
-    return value, None
-
-
-def _same_tenant_header(tenant_id: str) -> tuple[Any, tuple[Any, int] | None]:
-    header = request.headers.get("X-Tenant-Id", "").strip()
-    if not header:
-        return None, (jsonify({"error": "Falta cabecera X-Tenant-Id"}), 400)
-    if header != tenant_id:
-        return None, (jsonify({"error": "X-Tenant-Id no coincide con la ruta"}), 403)
-    return tenant_id, None
-
-
-def _membership_role(client: Client, tenant_id: str, user_id: str) -> str | None:
-    res = (
-        client.table("tenant_memberships")
-        .select("role")
-        .eq("tenant_id", tenant_id)
-        .eq("user_id", user_id)
-        .limit(1)
-        .execute()
-    )
-    rows: list[dict[str, Any]] = res.data or []
-    if not rows:
-        return None
-    return str(rows[0].get("role", ""))
-
-
 @bp.post("/tenants/<tenant_id>/agent/chat")
 def agent_chat(tenant_id: str):
-    claims, err = _require_bearer_jwt()
+    claims, err = require_bearer_jwt()
     if err:
         return err
     user_id = str(claims.get("sub", ""))
 
-    tid, err = _parse_uuid(tenant_id, "tenant_id")
+    tid, err = parse_uuid(tenant_id, "tenant_id")
     if err:
         return err
     tenant_id = tid
 
-    _, err = _same_tenant_header(tenant_id)
+    _, err = require_matching_tenant_header(tenant_id)
     if err:
         return err
 
-    client = _admin_client()
-    role = _membership_role(client, tenant_id, user_id)
+    client = admin_supabase_client()
+    role = membership_role(client, tenant_id, user_id)
     if not role:
         return jsonify({"error": "Sin acceso a este espacio"}), 403
 
@@ -128,7 +78,13 @@ def agent_chat(tenant_id: str):
                 input_message=message,
             )
 
-            graph = build_agent_graph(client, run_id)
+            gemini_key = get_gemini_api_key_for_tenant(client, tenant_id)
+            graph = build_agent_graph(
+                client,
+                run_id,
+                gemini_api_key=gemini_key,
+                langsmith_parent=ls_root,
+            )
             final = graph.invoke({"tenant_id": tenant_id, "message": message})
 
             answer = str(final.get("answer") or "")
@@ -140,6 +96,28 @@ def agent_chat(tenant_id: str):
                 status="completed",
                 output_message=answer,
                 langsmith_trace_id=trace_id,
+            )
+
+            record_audit(
+                client,
+                tenant_id=tenant_id,
+                actor_user_id=user_id,
+                event_type="agent.chat.completed",
+                payload={
+                    "run_id": run_id,
+                    "message_preview": message[:400],
+                    "answer_preview": answer[:400],
+                    "citations_count": len(citations),
+                },
+                agent_run_id=run_id,
+            )
+
+            notify_agent_chat_outcome(
+                client,
+                tenant_id=tenant_id,
+                user_id=user_id,
+                run_id=run_id,
+                completed=True,
             )
 
             finish_langsmith_root(
@@ -174,6 +152,26 @@ def agent_chat(tenant_id: str):
             )
         except Exception:  # noqa: BLE001
             pass
+        record_audit(
+            client,
+            tenant_id=tenant_id,
+            actor_user_id=user_id,
+            event_type="agent.chat.failed",
+            payload={
+                "run_id": run_id,
+                "message_preview": message[:400],
+                "detail_preview": err_s[:800],
+            },
+            agent_run_id=run_id,
+        )
+        notify_agent_chat_outcome(
+            client,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            run_id=run_id,
+            completed=False,
+            detail=err_s,
+        )
         finish_langsmith_root(ls_root, error=err_s)
         return (
             jsonify({"error": "Fallo del agente", "detail": err_s, "run_id": run_id}),

@@ -16,7 +16,11 @@ Copiá `.env.example` a `.env.local` y rellená valores de prueba.
 
 Fase 2 (Auth, tenants, JWT): [docs/operations/02-phase2-auth-tenant.md](../../docs/operations/02-phase2-auth-tenant.md).
 
-## Scripts
+Fase 8 (notificaciones in-app, Realtime): [docs/operations/08-phase8-in-app-notifications-realtime.md](../../docs/operations/08-phase8-in-app-notifications-realtime.md).
+
+## Notificaciones (Fase 8)
+
+Tras desplegar la migración SQL y con **Realtime** habilitado para `public.in_app_notifications`, la campana en el layout `(app)` muestra avisos en vivo (inserts desde Flask) y permite marcarlos leídos. No hace falta variable pública adicional; usa las mismas claves Supabase que el resto del cliente (`NEXT_PUBLIC_SUPABASE_*`).
 
 ```bash
 npm install

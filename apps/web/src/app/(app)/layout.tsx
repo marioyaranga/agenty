@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { InAppNotificationsHost } from "@/components/in-app-notifications-host";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -16,5 +17,10 @@ export default async function AppGroupLayout({
     redirect("/login");
   }
 
-  return children;
+  return (
+    <>
+      <InAppNotificationsHost userId={data.user.id} />
+      {children}
+    </>
+  );
 }

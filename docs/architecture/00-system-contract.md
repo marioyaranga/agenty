@@ -20,7 +20,9 @@ Este documento fija el contrato técnico y operativo del producto antes de imple
 | **index_status: pending** | El documento está en cola o en proceso de indexación; la búsqueda RAG puede excluirlo o marcarlo como no listo según producto. |
 | **index_status: ready** | Indexación completada correctamente; los chunks y embeddings están disponibles para consulta. |
 | **index_status: failed** | Falló la indexación o el embedding; el documento permanece visible con error explícito (sin truncar silenciosamente el fallo por defecto). |
-| **Correlación LangSmith vs agent_runs / agent_steps** | **LangSmith** aporta trazas y observabilidad de ejecución del agente (runs, spans). En aplicación, **agent_runs** y **agent_steps** son registros persistidos que deben poder correlacionarse con IDs o metadatos de traza LangSmith para depuración y auditoría entre lo observado en la nube y lo almacenado en Postgres. |
+| **Correlación LangSmith vs agent_runs / agent_steps** | **LangSmith** aporta trazas y observabilidad de ejecución del agente (runs, spans). En aplicación, **agent_runs** y **agent_steps** son registros persistidos que deben poder correlacionarse con IDs o metadatos de traza LangSmith para depuración y auditoría entre lo observado en la nube y lo almacenado en Postgres. Los spans hijos del grafo (retrieve, rewrite, generate, etc.) cuelgan del run raíz publicado por el chat cuando el tracing está activo. |
+| **audit_events** | Tabla append-only de eventos de producto (p. ej. chat completado, documento subido, cambios de IA por tenant). Solo el API con **service_role** inserta filas; los usuarios **owner/admin** pueden listar vía RLS en Postgres o vía endpoint Flask con el mismo criterio de rol. |
+| **in_app_notifications** | Notificaciones dirigidas a un **usuario** dentro de un **tenant** (`user_id` + `tenant_id`). Solo Flask con **service_role** inserta; el destinatario miembro del tenant puede **SELECT** y **UPDATE** (p. ej. `read_at`) vía RLS; el cliente Next puede suscribirse a **Realtime** (`postgres_changes`) para inserts/updates. |
 
 ---
 
@@ -92,6 +94,8 @@ flowchart LR
 - **Sin staging dedicado**: se asume un solo entorno productivo gestionado; el riesgo de deriva entre entornos se mitiga con pruebas locales mínimas y revisiones acotadas.
 - **SQL correctivo limitado**: scripts ad hoc solo cuando sea inevitable, con backup previo si la operación es destructiva.
 - **Backups en free tier**: acotar expectativas de retención y RPO/RTO; documentar qué cubre el proveedor y qué no.
+- **Fase 7 (agente + auditoría)**: grafo LangGraph con routing condicional (reescritura y hasta dos recuperaciones), `agent_steps` por `step_index` único por run, spans LangSmith hijos bajo la traza raíz, tabla **`audit_events`** append-only y listado para **owner/admin**; ver `docs/operations/07-phase7-langgraph-audit.md`.
+- **Fase 8 (notificaciones in-app + Realtime)**: tabla **`in_app_notifications`**, RLS por destinatario y membresía, inserción solo desde Flask; campana en Next con `postgres_changes`; ver `docs/operations/08-phase8-in-app-notifications-realtime.md`.
 
 ---
 
@@ -114,7 +118,7 @@ flowchart LR
 | Clave anónima (anon) | Solo si el cliente la necesita; nunca para bypass RLS sensible | Opcional según diseño | Publicable con RLS estricta |
 | **service_role** | **No** en cliente | Sí, solo servidor Flask aislado | Origen de la clave |
 | JWT signing / JWKS | N/A (validación en Flask) | Validación con JWKS de Supabase | Emisor de JWT |
-| API key Gemini | Server-only en Next si hubiera llamada directa | Sí (preferente centralizar en Flask) | N/A |
+| API key Gemini | Server-only en Next si hubiera llamada directa | Sí: global `GEMINI_API_KEY` y/o por tenant cifrada en `tenant_ai_settings` (Fernet `TENANT_SECRETS_FERNET_KEY`) | N/A (tabla sin acceso `authenticated`; solo Flask con `service_role`) |
 | LangSmith API key | Server-only si aplica desde Next | Sí en Flask | N/A |
 | Secretos de sesión / cookies | Config server | N/A o mínimo | Auth helpers |
 

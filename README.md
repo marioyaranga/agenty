@@ -8,6 +8,7 @@ Monorepo mínimo: **Next.js** (`apps/web`, Vercel) y **Flask** (`apps/api`, Rend
 - Checklist de despliegue Fase 1 (Supabase, Render, Vercel): [docs/operations/01-phase1-deploy.md](docs/operations/01-phase1-deploy.md)
 - Fase 2 (Auth Supabase SSR, tenants, JWT en Flask): [docs/operations/02-phase2-auth-tenant.md](docs/operations/02-phase2-auth-tenant.md)
 - Fase 3 (Documentos, Storage privado, API Flask): [docs/operations/03-phase3-documents-storage.md](docs/operations/03-phase3-documents-storage.md)
+- Fase 8 (Notificaciones in-app + Realtime): [docs/operations/08-phase8-in-app-notifications-realtime.md](docs/operations/08-phase8-in-app-notifications-realtime.md)
 
 ## Estructura
 

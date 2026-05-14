@@ -4,6 +4,8 @@ Fase 3: metadatos en `public.documents` (RLS en cliente) y bytes en Storage buck
 `tenant_documents` vía service_role desde este API (sin exponer la clave al browser).
 
 Fase 4: indexación RAG síncrona (Markdown) + reindex + consulta semántica (`rag/query` vía `rag.match_chunks`).
+Fase 6: embeddings y RAG resuelven clave Gemini por tenant (`gemini_keys`) cuando corresponde.
+Fase 8: tras indexación Markdown (alta o reindex), notificación in-app al `created_by` (ready/failed).
 """
 
 from __future__ import annotations
@@ -13,19 +15,26 @@ import re
 import uuid
 from typing import Any
 
-import jwt
 from flask import Blueprint, Response, jsonify, request
 from storage3.exceptions import StorageApiError
-from supabase import Client, create_client
+from supabase import Client
 from werkzeug.utils import secure_filename
 
-from auth_jwt import verify_supabase_jwt
+from audit_log import record_audit
+from notifications import notify_document_index_outcome
 from rag.index_document import (
     is_real_markdown,
     sync_index_markdown_document,
     truncate_index_error,
 )
 from rag.match_chunks import match_document_chunks
+from tenant_http import (
+    admin_supabase_client,
+    membership_role,
+    parse_uuid,
+    require_bearer_jwt,
+    require_matching_tenant_header,
+)
 
 bp = Blueprint("documents", __name__, url_prefix="/v1")
 
@@ -47,71 +56,12 @@ ALLOWED_EXTENSIONS = frozenset(
 )
 
 
-def _admin_client() -> Client:
-    url = os.environ["SUPABASE_URL"].strip()
-    key = os.environ["SUPABASE_SERVICE_ROLE_KEY"].strip()
-    return create_client(url, key)
-
-
 def _max_upload_bytes() -> int:
     raw = os.environ.get("MAX_UPLOAD_BYTES", "5242880").strip()
     try:
         return max(1, int(raw))
     except ValueError:
         return 5_242_880
-
-
-def _require_bearer_jwt() -> tuple[dict[str, Any] | None, tuple[Any, int] | None]:
-    auth = request.headers.get("Authorization", "")
-    prefix = "Bearer "
-    if not auth.startswith(prefix):
-        return None, (jsonify({"error": "Se requiere Authorization: Bearer"}), 401)
-    token = auth[len(prefix) :].strip()
-    if not token:
-        return None, (jsonify({"error": "Token vacío"}), 401)
-    try:
-        claims = verify_supabase_jwt(token)
-    except jwt.ExpiredSignatureError:
-        return None, (jsonify({"error": "Token expirado"}), 401)
-    except jwt.InvalidAudienceError:
-        return None, (jsonify({"error": "Audiencia inválida"}), 401)
-    except jwt.InvalidIssuerError:
-        return None, (jsonify({"error": "Emisor inválido"}), 401)
-    except jwt.PyJWTError:
-        return None, (jsonify({"error": "Token inválido"}), 401)
-    return claims, None
-
-
-def _parse_uuid(value: str, field: str) -> tuple[str | None, tuple[Any, int] | None]:
-    try:
-        uuid.UUID(value)
-    except ValueError:
-        return None, (jsonify({"error": f"{field} debe ser un UUID"}), 400)
-    return value, None
-
-
-def _same_tenant_header(tenant_id: str) -> tuple[Any, tuple[Any, int] | None]:
-    header = request.headers.get("X-Tenant-Id", "").strip()
-    if not header:
-        return None, (jsonify({"error": "Falta cabecera X-Tenant-Id"}), 400)
-    if header != tenant_id:
-        return None, (jsonify({"error": "X-Tenant-Id no coincide con la ruta"}), 403)
-    return tenant_id, None
-
-
-def _membership_role(client: Client, tenant_id: str, user_id: str) -> str | None:
-    res = (
-        client.table("tenant_memberships")
-        .select("role")
-        .eq("tenant_id", tenant_id)
-        .eq("user_id", user_id)
-        .limit(1)
-        .execute()
-    )
-    rows: list[dict[str, Any]] = res.data or []
-    if not rows:
-        return None
-    return str(rows[0].get("role", ""))
 
 
 def _index_status_for_mime(mime: str) -> str:
@@ -134,22 +84,22 @@ def _sanitize_storage_filename(filename: str) -> str:
 
 @bp.post("/tenants/<tenant_id>/documents")
 def upload_document(tenant_id: str):
-    claims, err = _require_bearer_jwt()
+    claims, err = require_bearer_jwt()
     if err:
         return err
     user_id = str(claims.get("sub", ""))
 
-    tid, err = _parse_uuid(tenant_id, "tenant_id")
+    tid, err = parse_uuid(tenant_id, "tenant_id")
     if err:
         return err
     tenant_id = tid
 
-    _, err = _same_tenant_header(tenant_id)
+    _, err = require_matching_tenant_header(tenant_id)
     if err:
         return err
 
-    client = _admin_client()
-    role = _membership_role(client, tenant_id, user_id)
+    client = admin_supabase_client()
+    role = membership_role(client, tenant_id, user_id)
     if not role or role not in EDITOR_ROLES:
         return jsonify({"error": "Se requiere rol editor, admin u owner"}), 403
 
@@ -210,7 +160,9 @@ def upload_document(tenant_id: str):
 
     final_row: dict[str, Any] = (ins.data or [row])[0]
 
+    ran_markdown_index = False
     if str(final_row.get("index_status", "")) == "pending":
+        ran_markdown_index = True
         status, err = sync_index_markdown_document(
             client,
             tenant_id=tenant_id,
@@ -238,32 +190,56 @@ def upload_document(tenant_id: str):
             final_row["index_status"] = status
             final_row["index_error"] = err_s
 
+    if ran_markdown_index:
+        notify_document_index_outcome(
+            client,
+            tenant_id=tenant_id,
+            created_by=str(final_row.get("created_by") or "") or None,
+            document_id=str(final_row.get("id", document_id)),
+            title=str(final_row.get("title") or title),
+            index_status=str(final_row.get("index_status", "")),
+            index_error=str(final_row.get("index_error") or "") or None,
+        )
+
+    record_audit(
+        client,
+        tenant_id=tenant_id,
+        actor_user_id=user_id,
+        event_type="document.uploaded",
+        payload={
+            "document_id": str(final_row.get("id", document_id)),
+            "title": title[:200],
+            "mime_type": mime,
+            "index_status": str(final_row.get("index_status", "")),
+        },
+    )
+
     return jsonify(final_row), 201
 
 
 @bp.get("/tenants/<tenant_id>/documents/<document_id>/download")
 def download_document(tenant_id: str, document_id: str):
-    claims, err = _require_bearer_jwt()
+    claims, err = require_bearer_jwt()
     if err:
         return err
     user_id = str(claims.get("sub", ""))
 
-    tid, err = _parse_uuid(tenant_id, "tenant_id")
+    tid, err = parse_uuid(tenant_id, "tenant_id")
     if err:
         return err
     tenant_id = tid
 
-    did, err = _parse_uuid(document_id, "document_id")
+    did, err = parse_uuid(document_id, "document_id")
     if err:
         return err
     document_id = did
 
-    _, err = _same_tenant_header(tenant_id)
+    _, err = require_matching_tenant_header(tenant_id)
     if err:
         return err
 
-    client = _admin_client()
-    role = _membership_role(client, tenant_id, user_id)
+    client = admin_supabase_client()
+    role = membership_role(client, tenant_id, user_id)
     if not role:
         return jsonify({"error": "Sin acceso a este espacio"}), 403
 
@@ -302,27 +278,27 @@ def download_document(tenant_id: str, document_id: str):
 
 @bp.delete("/tenants/<tenant_id>/documents/<document_id>")
 def delete_document(tenant_id: str, document_id: str):
-    claims, err = _require_bearer_jwt()
+    claims, err = require_bearer_jwt()
     if err:
         return err
     user_id = str(claims.get("sub", ""))
 
-    tid, err = _parse_uuid(tenant_id, "tenant_id")
+    tid, err = parse_uuid(tenant_id, "tenant_id")
     if err:
         return err
     tenant_id = tid
 
-    did, err = _parse_uuid(document_id, "document_id")
+    did, err = parse_uuid(document_id, "document_id")
     if err:
         return err
     document_id = did
 
-    _, err = _same_tenant_header(tenant_id)
+    _, err = require_matching_tenant_header(tenant_id)
     if err:
         return err
 
-    client = _admin_client()
-    role = _membership_role(client, tenant_id, user_id)
+    client = admin_supabase_client()
+    role = membership_role(client, tenant_id, user_id)
     if not role or role not in EDITOR_ROLES:
         return jsonify({"error": "Se requiere rol editor, admin u owner"}), 403
 
@@ -353,38 +329,46 @@ def delete_document(tenant_id: str, document_id: str):
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": "Fallo al borrar metadatos", "detail": str(exc)}), 502
 
+    record_audit(
+        client,
+        tenant_id=tenant_id,
+        actor_user_id=user_id,
+        event_type="document.deleted",
+        payload={"document_id": document_id},
+    )
+
     return ("", 204)
 
 
 @bp.post("/tenants/<tenant_id>/documents/<document_id>/reindex")
 def reindex_document(tenant_id: str, document_id: str):
-    claims, err = _require_bearer_jwt()
+    claims, err = require_bearer_jwt()
     if err:
         return err
     user_id = str(claims.get("sub", ""))
 
-    tid, err = _parse_uuid(tenant_id, "tenant_id")
+    tid, err = parse_uuid(tenant_id, "tenant_id")
     if err:
         return err
     tenant_id = tid
 
-    did, err = _parse_uuid(document_id, "document_id")
+    did, err = parse_uuid(document_id, "document_id")
     if err:
         return err
     document_id = did
 
-    _, err = _same_tenant_header(tenant_id)
+    _, err = require_matching_tenant_header(tenant_id)
     if err:
         return err
 
-    client = _admin_client()
-    role = _membership_role(client, tenant_id, user_id)
+    client = admin_supabase_client()
+    role = membership_role(client, tenant_id, user_id)
     if not role or role not in EDITOR_ROLES:
         return jsonify({"error": "Se requiere rol editor, admin u owner"}), 403
 
     res = (
         client.table("documents")
-        .select("id, tenant_id, storage_path, mime_type")
+        .select("id, tenant_id, created_by, title, storage_path, mime_type")
         .eq("id", document_id)
         .eq("tenant_id", tenant_id)
         .limit(1)
@@ -429,27 +413,45 @@ def reindex_document(tenant_id: str, document_id: str):
     if not payload:
         return jsonify({"error": "No se pudo leer el documento actualizado"}), 502
 
+    notify_document_index_outcome(
+        client,
+        tenant_id=tenant_id,
+        created_by=str(payload.get("created_by") or "") or None,
+        document_id=document_id,
+        title=str(payload.get("title") or ""),
+        index_status=str(payload.get("index_status", "")),
+        index_error=str(payload.get("index_error") or "") or None,
+    )
+
+    record_audit(
+        client,
+        tenant_id=tenant_id,
+        actor_user_id=user_id,
+        event_type="document.reindexed",
+        payload={"document_id": document_id},
+    )
+
     return jsonify(payload), 200
 
 
 @bp.post("/tenants/<tenant_id>/rag/query")
 def rag_query(tenant_id: str):
-    claims, err = _require_bearer_jwt()
+    claims, err = require_bearer_jwt()
     if err:
         return err
     user_id = str(claims.get("sub", ""))
 
-    tid, err = _parse_uuid(tenant_id, "tenant_id")
+    tid, err = parse_uuid(tenant_id, "tenant_id")
     if err:
         return err
     tenant_id = tid
 
-    _, err = _same_tenant_header(tenant_id)
+    _, err = require_matching_tenant_header(tenant_id)
     if err:
         return err
 
-    client = _admin_client()
-    role = _membership_role(client, tenant_id, user_id)
+    client = admin_supabase_client()
+    role = membership_role(client, tenant_id, user_id)
     if not role:
         return jsonify({"error": "Sin acceso a este espacio"}), 403
 
