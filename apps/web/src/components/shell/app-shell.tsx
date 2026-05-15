@@ -2,14 +2,16 @@
 
 import { SidebarProvider } from "@/components/ui/sidebar";
 import {
+  ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { WorkspaceProvider } from "@/lib/contexts/workspace-context";
+import { ViewerProvider } from "@/lib/contexts/viewer-context";
 import { SidebarLeft } from "@/components/shell/sidebar-left";
 import { TopBar } from "@/components/shell/topbar";
+import { MarkdownViewerPanel } from "@/components/viewer/markdown-viewer-panel";
 import type { TenantOption } from "@/lib/types/tenant";
 
 type AppShellProps = {
@@ -28,17 +30,30 @@ export function AppShell({
   return (
     <TooltipProvider>
       <WorkspaceProvider tenants={tenants}>
-        <SidebarProvider className="h-full min-h-0">
-          <SidebarLeft showAudit={showAudit} />
-          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-            <TopBar userEmail={userEmail} />
-            <ResizablePanelGroup className="flex-1 overflow-hidden">
-              <ResizablePanel id="center" minSize={40}>
-                <ScrollArea className="h-full">{children}</ScrollArea>
-              </ResizablePanel>
-            </ResizablePanelGroup>
-          </div>
-        </SidebarProvider>
+        <ViewerProvider>
+          <SidebarProvider className="h-full min-h-0">
+            <SidebarLeft showAudit={showAudit} />
+            <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+              <TopBar userEmail={userEmail} />
+              <ResizablePanelGroup
+                className="flex-1 overflow-hidden"
+              >
+                <ResizablePanel id="center" minSize={35} defaultSize={65}>
+                  <div className="h-full overflow-y-auto">{children}</div>
+                </ResizablePanel>
+                <ResizableHandle withHandle />
+                <ResizablePanel
+                  id="viewer"
+                  minSize={20}
+                  defaultSize={35}
+                  collapsible
+                >
+                  <MarkdownViewerPanel />
+                </ResizablePanel>
+              </ResizablePanelGroup>
+            </div>
+          </SidebarProvider>
+        </ViewerProvider>
       </WorkspaceProvider>
     </TooltipProvider>
   );

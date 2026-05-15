@@ -13,6 +13,8 @@ import {
   putTenantGeminiApiKey,
   type TenantAiSettings,
 } from "@/lib/api/tenant-ai-settings";
+import { createClient } from "@/lib/supabase/client";
+import { cn } from "@/lib/utils";
 import type { TenantOption } from "@/lib/types/tenant";
 
 const STORAGE_KEY = "workyai_active_tenant_id";
