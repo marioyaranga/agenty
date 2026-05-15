@@ -27,7 +27,6 @@ import {
   BranchPickerPrimitive,
   ComposerPrimitive,
   ErrorPrimitive,
-  getMcpAppFromToolPart,
   MessagePrimitive,
   SuggestionPrimitive,
   ThreadPrimitive,
@@ -47,6 +46,19 @@ import {
   SquareIcon,
 } from "lucide-react";
 import type { FC } from "react";
+
+/**
+ * Las MCP Apps adjuntan metadata `mcp.app` en partes `tool-call`; no deben agruparse en el acordeón genérico de herramientas.
+ * Equivalente al helper que antes exportaba `@assistant-ui/react` (v0.12+ ya no lo reexporta en tipos).
+ * @see https://www.assistant-ui.com/docs/guides/mcp-apps
+ */
+function getMcpAppFromToolPart(part: {
+  type: string;
+  mcp?: { app?: unknown };
+}): unknown {
+  if (part.type !== "tool-call") return undefined;
+  return part.mcp?.app;
+}
 
 export const Thread: FC = () => {
   return (
