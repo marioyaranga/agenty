@@ -53,18 +53,25 @@ def optional_langsmith_root(
     name: str,
     inputs: dict[str, Any],
 ) -> Iterator[Any]:
-    """Context manager que devuelve un `RunTree` publicado o None si no aplica / falla."""
+    """Context manager que devuelve un `RunTree` publicado o None si no aplica / falla.
+
+    Un solo ``yield`` en el generador: si ``post()`` falla no se puede hacer
+    ``yield`` dentro del ``except`` tras un ``yield`` previo; si el cuerpo del
+    ``with`` lanza, un segundo ``yield`` rompe el protocolo y produce
+    ``generator didn't stop after throw()``.
+    """
     if not langsmith_api_key_configured():
         yield None
         return
+    rt: Any | None = None
     try:
         from langsmith.run_trees import RunTree
 
         rt = RunTree(name=name, run_type="chain", inputs=inputs)
         rt.post(exclude_child_runs=True)
-        yield rt
     except Exception:  # noqa: BLE001 — tracing nunca debe tumbar el chat
-        yield None
+        rt = None
+    yield rt
 
 
 def trace_id_for_persistence(rt: Any | None) -> str | None:
