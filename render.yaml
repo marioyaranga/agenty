@@ -19,3 +19,11 @@ services:
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
         # Secreto de servicio; solo en Render, nunca en NEXT_PUBLIC_*
+      - key: TENANT_SECRETS_FERNET_KEY
+        sync: false
+        # Obligatoria para PUT /settings/ai: salida de
+        # python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+        # Misma clave en todos los dynos; rotar implica re-guardar claves Gemini por tenant.
+      - key: GEMINI_API_KEY
+        sync: false
+        # Opcional pero recomendada: fallback global si un tenant no guardó clave propia.
