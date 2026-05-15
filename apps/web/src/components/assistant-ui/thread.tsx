@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ThreadPrimitive,
   MessagePrimitive,
@@ -10,12 +10,14 @@ import {
 } from "@assistant-ui/react";
 import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
 import remarkGfm from "remark-gfm";
-import { ArrowUp, StopCircle, ChevronDown, FileText, X } from "lucide-react";
+import { ArrowUp, StopCircle, ChevronDown, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useOptionalSeoSteps } from "@/lib/contexts/seo-steps-context";
 import { SeoSubagentsPanel } from "@/components/seo/seo-subagents-panel";
-import { useMentions, type Mention } from "@/lib/contexts/mentions-context";
+import { useMentions } from "@/lib/contexts/mentions-context";
 import { useWorkspace } from "@/lib/contexts/workspace-context";
+import { useViewer } from "@/lib/contexts/viewer-context";
+import { fetchDocumentContent } from "@/lib/api/documents";
 import { createClient } from "@/lib/supabase/client";
 
 type DocOption = { id: string; title: string; mime_type: string };
@@ -147,9 +149,70 @@ function UserMessage() {
 }
 
 function UserTextPart() {
+  const { activeTenantId } = useWorkspace();
+  const viewer = useViewer();
+
+  const text = useAuiState((s) => {
+    const content =
+      (s.message as { content?: { type: string; text?: string }[] })?.content ?? [];
+    return content
+      .filter((p) => p.type === "text")
+      .map((p) => p.text ?? "")
+      .join("");
+  });
+
+  const handleMentionClick = useCallback(
+    async (name: string) => {
+      if (!activeTenantId) return;
+      try {
+        const ctrl = new AbortController();
+        const docs = await fetchDocumentSuggestions(activeTenantId, name, ctrl.signal);
+        if (!docs.length) return;
+        const doc = docs[0];
+        const content = await fetchDocumentContent(activeTenantId, doc.id);
+        viewer.openDocument(doc.id, content, doc.mime_type, doc.title);
+      } catch {
+        // si el doc no existe, silencioso
+      }
+    },
+    [activeTenantId, viewer],
+  );
+
+  const parts = useMemo(() => {
+    const result: Array<{ type: "text" | "mention"; value: string }> = [];
+    const regex = /@(\S+)/g;
+    let lastIndex = 0;
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+      if (match.index > lastIndex) {
+        result.push({ type: "text", value: text.slice(lastIndex, match.index) });
+      }
+      result.push({ type: "mention", value: match[1] });
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < text.length) {
+      result.push({ type: "text", value: text.slice(lastIndex) });
+    }
+    return result;
+  }, [text]);
+
   return (
     <p className="whitespace-pre-wrap text-sm leading-relaxed">
-      <MessagePartPrimitive.Text />
+      {parts.map((part, i) =>
+        part.type === "mention" ? (
+          <button
+            key={i}
+            type="button"
+            title="Abrir archivo"
+            onClick={() => handleMentionClick(part.value)}
+            className="font-semibold underline decoration-dotted underline-offset-2 hover:decoration-solid"
+          >
+            @{part.value}
+          </button>
+        ) : (
+          part.value
+        ),
+      )}
     </p>
   );
 }
