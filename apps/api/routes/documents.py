@@ -123,7 +123,11 @@ def list_documents(tenant_id: str):
         if is_null == "true":
             q = q.is_("folder_id", "null")
 
-    res = q.order("title").execute()
+    search = (request.args.get("search") or "").strip()
+    if search:
+        q = q.ilike("title", f"%{search}%")
+
+    res = q.order("title").limit(50).execute()
     return jsonify({"documents": res.data or []}), 200
 
 

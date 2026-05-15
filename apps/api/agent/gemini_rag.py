@@ -154,6 +154,7 @@ def answer_with_gemini_with_tools(
     *,
     tool_results: list[dict[str, Any]] | None = None,
     history: list[dict[str, Any]] | None = None,
+    pinned_docs: list[dict[str, Any]] | None = None,
     api_key: str | None = None,
     model: str | None = None,
 ) -> dict[str, Any]:
@@ -168,8 +169,21 @@ def answer_with_gemini_with_tools(
     cites = citations_from_matches(matches)
 
     context_lines = []
+
+    if pinned_docs:
+        pinned_parts = []
+        for pd in pinned_docs:
+            name = str(pd.get("name") or "Documento")
+            content = str(pd.get("content") or "")
+            pinned_parts.append(f"### {name}\n{content}")
+        context_lines.append(
+            "<<<DOCUMENTOS MENCIONADOS POR EL USUARIO>>>\n"
+            + "\n\n".join(pinned_parts)
+            + "\n<<</DOCUMENTOS MENCIONADOS>>>"
+        )
+
     if matches:
-        context_lines.append(f"<<<CONTEXT>>>\n{_format_context(matches)}\n<<</CONTEXT>>>")
+        context_lines.append(f"<<<CONTEXT RAG>>>\n{_format_context(matches)}\n<<</CONTEXT RAG>>>")
 
     tool_history = ""
     for tr in tool_results or []:

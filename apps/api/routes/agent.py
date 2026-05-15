@@ -375,6 +375,39 @@ def agent_chat(tenant_id: str):
 
     raw_thread_id = (body.get("thread_id") or "").strip() or None
 
+    pinned_docs: list[dict] = []
+    raw_mentions = body.get("mentions") or []
+    if isinstance(raw_mentions, list):
+        for m in raw_mentions[:5]:
+            if not isinstance(m, dict):
+                continue
+            doc_id = str(m.get("id") or "").strip()
+            if not doc_id:
+                continue
+            try:
+                doc_res = (
+                    client.table("documents")
+                    .select("id, title, storage_path")
+                    .eq("id", doc_id)
+                    .eq("tenant_id", tenant_id)
+                    .limit(1)
+                    .execute()
+                )
+                if not (doc_res.data or []):
+                    continue
+                doc = doc_res.data[0]
+                raw_bytes = client.storage.from_("tenant_documents").download(
+                    str(doc["storage_path"])
+                )
+                content = raw_bytes.decode("utf-8", errors="replace")[:20_000]
+                pinned_docs.append({
+                    "id": doc_id,
+                    "name": str(m.get("name") or doc.get("title") or ""),
+                    "content": content,
+                })
+            except Exception:  # noqa: BLE001
+                pass
+
     thread_id, err = _get_or_create_thread(
         client,
         tenant_id=tenant_id,
@@ -435,6 +468,7 @@ def agent_chat(tenant_id: str):
                 "user_id": user_id,
                 "message": message,
                 "history": history,
+                "pinned_docs": pinned_docs,
             })
 
             answer = str(final.get("answer") or "")

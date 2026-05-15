@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, type MutableRefObject } from "react";
 import { useLocalRuntime, type ChatModelAdapter, type ThreadMessageLike } from "@assistant-ui/react";
 import { createClient } from "@/lib/supabase/client";
 import type { SeoSubagentStep } from "@/lib/types/seo-agent";
+import type { Mention } from "@/lib/contexts/mentions-context";
 
 type WorkyAiResponse = {
   run_id: string;
@@ -27,6 +28,7 @@ export function useWorkyAiRuntime(
   callbacks?: AgentRuntimeCallbacks,
   initialMessages?: readonly ThreadMessageLike[],
   initialThreadId?: string | null,
+  mentionsRef?: MutableRefObject<Mention[]>,
 ) {
   const threadIdRef = useRef<string | null>(initialThreadId ?? null);
 
@@ -72,6 +74,11 @@ export function useWorkyAiRuntime(
               body: JSON.stringify({
                 message: userText,
                 thread_id: threadIdRef.current,
+                mentions: (mentionsRef?.current ?? []).map((m) => ({
+                  id: m.id,
+                  name: m.name,
+                  type: m.type,
+                })),
               }),
             },
           );
@@ -103,6 +110,7 @@ export function useWorkyAiRuntime(
         const ok = body as WorkyAiResponse;
         threadIdRef.current = ok.thread_id;
         callbacks?.onThreadUpdate?.(ok.thread_id);
+        if (mentionsRef) mentionsRef.current = [];
         const steps = Array.isArray(ok.steps) ? ok.steps : [];
         callbacks?.onRunComplete(turnIndex, steps);
 

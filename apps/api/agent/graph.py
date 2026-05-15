@@ -30,6 +30,8 @@ class AgentGraphState(TypedDict, total=False):
     matches: list[dict[str, Any]]
     answer: str
     citations: list[dict[str, Any]]
+    # Documentos mencionados explícitamente con @ (contenido pre-cargado)
+    pinned_docs: list[dict[str, Any]]
     # Tool calling state
     pending_tool_name: str | None
     pending_tool_args: dict[str, Any] | None
@@ -225,6 +227,7 @@ def build_agent_graph(
                 list(state.get("matches") or []),
                 tool_results=tool_results,
                 history=list(state.get("history") or []),
+                pinned_docs=list(state.get("pinned_docs") or []),
                 api_key=gemini_api_key,
                 model=chat_model,
             )

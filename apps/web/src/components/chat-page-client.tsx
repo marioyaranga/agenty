@@ -1,15 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AssistantRuntimeProvider, type ThreadMessageLike } from "@assistant-ui/react";
 import { useWorkspace } from "@/lib/contexts/workspace-context";
 import { useChatThreads } from "@/lib/contexts/chat-thread-context";
 import { useWorkyAiRuntime } from "@/lib/assistant-ui/workyai-runtime";
 import { SeoStepsProvider, useSeoSteps } from "@/lib/contexts/seo-steps-context";
+import { MentionsProvider, useMentions, type Mention } from "@/lib/contexts/mentions-context";
 import { getThread, type ThreadRun } from "@/lib/assistant-ui/threads-api";
 import { Thread } from "@/components/assistant-ui/thread";
 import { ChatHeader } from "@/components/chat/chat-header";
 import type { TenantOption } from "@/lib/types/tenant";
+import type { SeoSubagentStep } from "@/lib/types/seo-agent";
 
 type HydratedThread = {
   threadId: string | null;
@@ -50,7 +52,9 @@ export function ChatPageClient({ tenants }: { tenants: TenantOption[] }) {
 
   return (
     <SeoStepsProvider>
-      <ChatManager tenantId={activeTenantId} />
+      <MentionsProvider>
+        <ChatManager tenantId={activeTenantId} />
+      </MentionsProvider>
     </SeoStepsProvider>
   );
 }
@@ -125,6 +129,7 @@ function ChatInner({
 }) {
   const { onRunStart, onRunComplete, onRunEnd } = useSeoSteps();
   const { threads, upsertThread } = useChatThreads();
+  const { mentionsRef, clearMentions } = useMentions();
 
   const handleThreadUpdate = useCallback(
     (threadId: string) => {
@@ -143,11 +148,20 @@ function ChatInner({
     [threads, tenantId, upsertThread],
   );
 
+  const handleRunComplete = useCallback(
+    (turnIndex: number, steps: SeoSubagentStep[]) => {
+      onRunComplete(turnIndex, steps);
+      clearMentions();
+    },
+    [onRunComplete, clearMentions],
+  );
+
   const { runtime } = useWorkyAiRuntime(
     tenantId,
-    { onRunStart, onRunComplete, onRunEnd, onThreadUpdate: handleThreadUpdate },
+    { onRunStart, onRunComplete: handleRunComplete, onRunEnd, onThreadUpdate: handleThreadUpdate },
     initialMessages,
     activeThreadId,
+    mentionsRef,
   );
 
   return (
