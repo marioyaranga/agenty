@@ -486,6 +486,165 @@ def tool_delete_folder(
 
 
 # ---------------------------------------------------------------------------
+# Tool: listar contenido de una carpeta (o raíz)
+# ---------------------------------------------------------------------------
+
+def tool_list_folder(
+    client: Client,
+    *,
+    tenant_id: str,
+    user_id: str,
+    folder_id: str | None = None,
+) -> dict[str, Any]:
+    role = membership_role(client, tenant_id, user_id)
+    if not role:
+        return {"ok": False, "error": "Sin acceso a este espacio"}
+
+    try:
+        folders_q = (
+            client.table("document_folders")
+            .select("id, name, parent_id")
+            .eq("tenant_id", tenant_id)
+        )
+        folders_q = folders_q.eq("parent_id", folder_id) if folder_id else folders_q.is_("parent_id", "null")
+        folders = (folders_q.order("name").limit(100).execute().data or [])
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"Error al listar carpetas: {exc}"}
+
+    try:
+        docs_q = (
+            client.table("documents")
+            .select("id, title, mime_type, size_bytes, index_status")
+            .eq("tenant_id", tenant_id)
+        )
+        docs_q = docs_q.eq("folder_id", folder_id) if folder_id else docs_q.is_("folder_id", "null")
+        docs = (docs_q.order("title").limit(200).execute().data or [])
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"Error al listar documentos: {exc}"}
+
+    return {
+        "ok": True,
+        "folder_id": folder_id,
+        "folders": [{"id": f["id"], "name": f["name"]} for f in folders],
+        "documents": [
+            {
+                "id": d["id"],
+                "title": d["title"],
+                "mime_type": d.get("mime_type", ""),
+                "size_bytes": d.get("size_bytes", 0),
+                "index_status": d.get("index_status", ""),
+            }
+            for d in docs
+        ],
+        "folder_count": len(folders),
+        "document_count": len(docs),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Tool: leer contenido completo de un documento
+# ---------------------------------------------------------------------------
+
+_READ_MAX_CHARS = 30_000
+
+
+def tool_read_document(
+    client: Client,
+    *,
+    tenant_id: str,
+    user_id: str,
+    document_id: str,
+) -> dict[str, Any]:
+    role = membership_role(client, tenant_id, user_id)
+    if not role:
+        return {"ok": False, "error": "Sin acceso a este espacio"}
+
+    res = (
+        client.table("documents")
+        .select("id, title, storage_path, mime_type, size_bytes")
+        .eq("id", document_id)
+        .eq("tenant_id", tenant_id)
+        .limit(1)
+        .execute()
+    )
+    if not (res.data or []):
+        return {"ok": False, "error": "Documento no encontrado"}
+
+    doc = res.data[0]
+    try:
+        raw: bytes = client.storage.from_(BUCKET_ID).download(str(doc["storage_path"]))
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"Error al descargar documento: {exc}"}
+
+    try:
+        content = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        content = raw.decode("latin-1", errors="replace")
+
+    truncated = len(content) > _READ_MAX_CHARS
+    return {
+        "ok": True,
+        "document_id": document_id,
+        "title": doc.get("title", ""),
+        "mime_type": doc.get("mime_type", ""),
+        "size_bytes": doc.get("size_bytes", 0),
+        "content": content[:_READ_MAX_CHARS],
+        "truncated": truncated,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Tool: buscar documentos por título
+# ---------------------------------------------------------------------------
+
+def tool_search_documents(
+    client: Client,
+    *,
+    tenant_id: str,
+    user_id: str,
+    query: str,
+    folder_id: str | None = None,
+) -> dict[str, Any]:
+    role = membership_role(client, tenant_id, user_id)
+    if not role:
+        return {"ok": False, "error": "Sin acceso a este espacio"}
+
+    query = (query or "").strip()
+    if not query:
+        return {"ok": False, "error": "Se requiere query de búsqueda"}
+
+    try:
+        q = (
+            client.table("documents")
+            .select("id, title, mime_type, folder_id, size_bytes, index_status")
+            .eq("tenant_id", tenant_id)
+            .ilike("title", f"%{query}%")
+        )
+        if folder_id:
+            q = q.eq("folder_id", folder_id)
+        docs = (q.order("title").limit(20).execute().data or [])
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"Error al buscar documentos: {exc}"}
+
+    return {
+        "ok": True,
+        "query": query,
+        "results": [
+            {
+                "id": d["id"],
+                "title": d["title"],
+                "mime_type": d.get("mime_type", ""),
+                "folder_id": d.get("folder_id"),
+                "size_bytes": d.get("size_bytes", 0),
+                "index_status": d.get("index_status", ""),
+            }
+            for d in docs
+        ],
+        "result_count": len(docs),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Dispatcher: nombre de tool → función
 # ---------------------------------------------------------------------------
 
@@ -497,6 +656,9 @@ TOOL_REGISTRY: dict[str, Any] = {
     "tool_move": tool_move,
     "tool_delete_document": tool_delete_document,
     "tool_delete_folder": tool_delete_folder,
+    "tool_list_folder": tool_list_folder,
+    "tool_read_document": tool_read_document,
+    "tool_search_documents": tool_search_documents,
     "tool_seo_search_volume": tool_seo_search_volume,
     "tool_seo_serp_organic": tool_seo_serp_organic,
 }
@@ -652,6 +814,57 @@ GEMINI_TOOL_DECLARATIONS: list[dict[str, Any]] = [
                 },
             },
             "required": ["keywords"],
+        },
+    },
+    {
+        "name": "tool_list_folder",
+        "description": (
+            "Lista las subcarpetas y documentos dentro de una carpeta del espacio de trabajo. "
+            "Si no se pasa folder_id, lista el contenido de la raíz. "
+            "Usá esta tool antes de crear, mover o editar archivos para conocer qué existe y obtener los UUIDs."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "folder_id": {
+                    "type": "string",
+                    "description": "UUID de la carpeta a listar (omitir para listar la raíz)",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "tool_read_document",
+        "description": (
+            "Descarga y devuelve el contenido completo de un documento (Markdown o HTML). "
+            "Usá esta tool cuando necesites leer, resumir, editar o analizar el contenido de un archivo existente."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "document_id": {"type": "string", "description": "UUID del documento a leer"},
+            },
+            "required": ["document_id"],
+        },
+    },
+    {
+        "name": "tool_search_documents",
+        "description": (
+            "Busca documentos por nombre/título (búsqueda parcial, sin distinguir mayúsculas). "
+            "Usá esta tool cuando el usuario mencione un documento por nombre y necesitás su UUID "
+            "para leerlo, editarlo o moverlo."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Texto a buscar en el título del documento"},
+                "folder_id": {
+                    "type": "string",
+                    "description": "UUID de carpeta para limitar la búsqueda (opcional)",
+                },
+            },
+            "required": ["query"],
         },
     },
     {

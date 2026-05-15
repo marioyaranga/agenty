@@ -290,6 +290,7 @@ def build_agent_graph(
                 "tool_create_folder", "tool_create_document",
                 "tool_update_document_content", "tool_rename",
                 "tool_move", "tool_delete_document", "tool_delete_folder",
+                "tool_list_folder", "tool_read_document", "tool_search_documents",
                 "tool_seo_search_volume", "tool_seo_serp_organic",
             })
             safe_key = tool_name if tool_name in _VALID_TOOL_KEYS else "tool_create_folder"
