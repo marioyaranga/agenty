@@ -146,7 +146,7 @@ def tool_seo_keywords_for_url(
     defaults = get_effective_seo_defaults(client, tenant_id)
     loc = location_code if location_code is not None else defaults["location_code"]
     lang = language_code if language_code else defaults["language_code"]
-    lim = limit if limit is not None else 20
+    lim = limit if limit is not None else 10
 
     clean_urls = [u.strip() for u in (urls or []) if u.strip()]
     if not clean_urls:

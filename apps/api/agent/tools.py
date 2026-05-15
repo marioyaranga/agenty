@@ -917,7 +917,7 @@ GEMINI_TOOL_DECLARATIONS: list[dict[str, Any]] = [
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "Cantidad máxima de keywords por URL (default 20, máximo 1000).",
+                    "description": "Cantidad máxima de keywords por URL (default 10, máximo 1000). Usá un valor bajo (5-10) cuando pasás muchas URLs a la vez.",
                 },
                 "location_code": {
                     "type": "integer",

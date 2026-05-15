@@ -7,8 +7,9 @@ services:
     plan: free
     rootDir: apps/api
     buildCommand: pip install -r requirements.txt
-    # SEO chat: Gemini + DataForSEO pueden superar 30s; el default de gunicorn corta el worker.
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 180 --graceful-timeout 60
+    # 2 workers: uno puede procesar un chat largo mientras el otro responde /health.
+    # --preload carga el app una sola vez (fork), minimizando el overhead de RAM en el plan free.
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 180 --graceful-timeout 60 --workers 2 --preload
     healthCheckPath: /health
     envVars:
       - key: WEB_ORIGIN
