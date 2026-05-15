@@ -11,7 +11,7 @@ from typing import Any
 
 from supabase import Client
 
-from agent.seo_tools import tool_seo_search_volume, tool_seo_serp_organic
+from agent.seo_tools import tool_seo_keywords_for_url, tool_seo_search_volume, tool_seo_serp_organic
 from audit_log import record_audit
 from notifications import notify_document_index_outcome
 from postgrest_utils import first_dict_from_execute
@@ -661,6 +661,7 @@ TOOL_REGISTRY: dict[str, Any] = {
     "tool_search_documents": tool_search_documents,
     "tool_seo_search_volume": tool_seo_search_volume,
     "tool_seo_serp_organic": tool_seo_serp_organic,
+    "tool_seo_keywords_for_url": tool_seo_keywords_for_url,
 }
 
 
@@ -895,6 +896,37 @@ GEMINI_TOOL_DECLARATIONS: list[dict[str, Any]] = [
                 },
             },
             "required": ["keyword"],
+        },
+    },
+    {
+        "name": "tool_seo_keywords_for_url",
+        "description": (
+            "Obtiene las keywords asociadas a un sitio web o URL vía DataForSEO (Google Ads). "
+            "Usá esta tool cuando el usuario pida las keywords de un dominio o página, quiera "
+            "analizar por qué términos rankea un competidor, o necesite descubrir keywords a "
+            "partir de una URL."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "Dominio o URL a analizar (ej: 'competitor.com' o 'https://competitor.com/blog').",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Cantidad máxima de keywords a devolver (default 20, máximo 1000).",
+                },
+                "location_code": {
+                    "type": "integer",
+                    "description": "Código de ubicación DataForSEO (omitir para usar el default del espacio).",
+                },
+                "language_code": {
+                    "type": "string",
+                    "description": "Código de idioma DataForSEO (omitir para usar el default del espacio).",
+                },
+            },
+            "required": ["url"],
         },
     },
 ]

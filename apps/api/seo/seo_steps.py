@@ -21,6 +21,10 @@ PHASE_LABELS: dict[str, tuple[str, str]] = {
         "SERP orgánico",
         "Consulta resultados orgánicos en Google (live advanced).",
     ),
+    "keywords_for_url": (
+        "Keywords por URL",
+        "Obtiene las keywords asociadas a un dominio o página (Google Ads).",
+    ),
     "format": (
         "Respuesta",
         "Arma tablas y resumen en Markdown.",
@@ -61,6 +65,10 @@ def _detail_for_phase(phase: str, payload: dict[str, Any]) -> str:
         blocks = payload.get("serp_summary") or payload.get("blocks") or []
         n = len(blocks) if isinstance(blocks, list) else int(payload.get("block_count") or 0)
         return f"{n} SERP consultada(s)."
+    if phase == "keywords_for_url":
+        target = str(payload.get("target_url") or "")
+        n = int(payload.get("keyword_count") or 0)
+        return f"{n} keyword(s) para {target}." if target else f"{n} keyword(s)."
     if phase == "format":
         n = int(payload.get("keyword_count") or 0)
         mode = str(payload.get("mode") or "")
@@ -93,6 +101,10 @@ def format_seo_steps_for_ui(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 payload.get("serp_summary") or payload.get("serp_block_count")
             ):
                 sub_phases.append("serp")
+            if mode == "keywords_for_url" and (
+                payload.get("keywords_summary") or payload.get("keyword_count")
+            ):
+                sub_phases.append("keywords_for_url")
             for sub in sub_phases:
                 if sub in seen_phases:
                     continue
