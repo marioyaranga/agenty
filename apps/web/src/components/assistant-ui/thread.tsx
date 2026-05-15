@@ -153,9 +153,11 @@ function UserTextPart() {
   const viewer = useViewer();
 
   const text = useAuiState((s) => {
-    const content =
-      (s.message as { content?: { type: string; text?: string }[] })?.content ?? [];
-    return content
+    const msg = s.message as unknown as {
+      readonly content?: ReadonlyArray<{ readonly type: string; readonly text?: string }>;
+    };
+    const content = msg.content ?? [];
+    return [...content]
       .filter((p) => p.type === "text")
       .map((p) => p.text ?? "")
       .join("");
@@ -264,42 +266,50 @@ function AssistantMarkdownTextPart() {
 // Compositor (input + @mention + botón enviar/cancelar)
 // ---------------------------------------------------------------------------
 
+type MentionState = { query: string; atStart: number };
+
 function Composer() {
-  const { mentions, addMention, removeMention } = useMentions();
+  const { addMention } = useMentions();
   const { activeTenantId } = useWorkspace();
-  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionState, setMentionState] = useState<MentionState | null>(null);
   const [suggestions, setSuggestions] = useState<DocOption[]>([]);
+  const containerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Detectar @palabra antes del cursor
   const handleKeyUp = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       const ta = e.currentTarget;
-      const before = ta.value.slice(0, ta.selectionStart ?? ta.value.length);
+      const cursor = ta.selectionStart ?? ta.value.length;
+      const before = ta.value.slice(0, cursor);
       const match = before.match(/@(\w*)$/);
-      setMentionQuery(match ? match[1] : null);
+      if (match) {
+        setMentionState({ query: match[1], atStart: before.lastIndexOf("@") });
+      } else {
+        setMentionState(null);
+      }
     },
     [],
   );
 
-  // Buscar docs cuando cambia mentionQuery
+  // Buscar docs cuando cambia la query
   useEffect(() => {
-    if (mentionQuery === null || !activeTenantId) {
+    if (mentionState === null || !activeTenantId) {
       setSuggestions([]);
       return;
     }
     const ctrl = new AbortController();
-    fetchDocumentSuggestions(activeTenantId, mentionQuery, ctrl.signal)
+    fetchDocumentSuggestions(activeTenantId, mentionState.query, ctrl.signal)
       .then(setSuggestions)
       .catch(() => {});
     return () => ctrl.abort();
-  }, [mentionQuery, activeTenantId]);
+  }, [mentionState, activeTenantId]);
 
   // Cerrar dropdown al click fuera
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setMentionQuery(null);
+        setMentionState(null);
       }
     };
     document.addEventListener("pointerdown", onPointerDown);
@@ -308,22 +318,41 @@ function Composer() {
 
   const selectDoc = useCallback(
     (doc: DocOption) => {
+      // Reemplazar @query con @titulo en el textarea
+      const ta = containerRef.current?.querySelector("textarea");
+      if (ta && mentionState !== null) {
+        const { atStart, query } = mentionState;
+        const value = ta.value;
+        const replaceEnd = atStart + 1 + query.length;
+        const newValue = value.slice(0, atStart) + "@" + doc.title + value.slice(replaceEnd);
+        const nativeSetter = Object.getOwnPropertyDescriptor(
+          HTMLTextAreaElement.prototype,
+          "value",
+        )?.set;
+        nativeSetter?.call(ta, newValue);
+        ta.dispatchEvent(new Event("input", { bubbles: true }));
+        const newCursor = atStart + 1 + doc.title.length;
+        requestAnimationFrame(() => {
+          ta.focus();
+          ta.setSelectionRange(newCursor, newCursor);
+        });
+      }
       addMention({ id: doc.id, name: doc.title, type: "document" });
-      setMentionQuery(null);
+      setMentionState(null);
       setSuggestions([]);
     },
-    [addMention],
+    [addMention, mentionState],
   );
 
   return (
     <ComposerPrimitive.Root className="shrink-0 border-t bg-background px-4 py-3">
-      <div className="relative mx-auto max-w-3xl">
+      <div ref={containerRef} className="relative mx-auto max-w-3xl">
 
         {/* Dropdown de sugerencias @mention */}
-        {mentionQuery !== null && suggestions.length > 0 && (
+        {mentionState !== null && suggestions.length > 0 && (
           <div
             ref={dropdownRef}
-            className="absolute bottom-full mb-1 w-full rounded-xl border bg-popover shadow-md z-50 overflow-hidden"
+            className="absolute bottom-full mb-1 w-full overflow-hidden rounded-xl border bg-popover shadow-md z-50"
           >
             {suggestions.map((doc) => (
               <button
@@ -338,29 +367,6 @@ function Composer() {
                 <FileText size={14} className="shrink-0 text-muted-foreground" />
                 <span className="truncate">{doc.title}</span>
               </button>
-            ))}
-          </div>
-        )}
-
-        {/* Chips de mentions seleccionados */}
-        {mentions.length > 0 && (
-          <div className="flex flex-wrap gap-1 pb-1">
-            {mentions.map((m) => (
-              <span
-                key={m.id}
-                className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
-              >
-                <FileText size={10} />
-                {m.name}
-                <button
-                  type="button"
-                  aria-label={`Quitar @${m.name}`}
-                  onClick={() => removeMention(m.id)}
-                  className="ml-0.5 rounded-full hover:text-destructive"
-                >
-                  <X size={10} />
-                </button>
-              </span>
             ))}
           </div>
         )}
