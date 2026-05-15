@@ -149,12 +149,13 @@ export function FileExplorerPanel() {
     async (node: NodeApi<TreeNode>) => {
       if (!activeTenantId || node.data.type !== "document") return;
       setSelectedDocumentId(node.data.id);
+      const title = node.data.name;
       try {
         const text = await fetchDocumentContent(activeTenantId, node.data.id);
         const mime = node.data.mimeType ?? "text/markdown";
-        openDocument(node.data.id, text, mime);
+        openDocument(node.data.id, text, mime, title);
       } catch {
-        openDocument(node.data.id, "", "text/markdown");
+        openDocument(node.data.id, "", "text/markdown", title);
       }
     },
     [activeTenantId, openDocument, setSelectedDocumentId],

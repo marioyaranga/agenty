@@ -7,7 +7,6 @@ import { useChatThreads } from "@/lib/contexts/chat-thread-context";
 import { useWorkyAiRuntime } from "@/lib/assistant-ui/workyai-runtime";
 import { Thread } from "@/components/assistant-ui/thread";
 import { ChatHeader } from "@/components/chat/chat-header";
-import { ViewerBridge } from "@/components/chat/viewer-bridge";
 import type { TenantOption } from "@/lib/types/tenant";
 
 export function ChatPageClient({ tenants }: { tenants: TenantOption[] }) {
@@ -89,7 +88,6 @@ function ChatWithRuntime({
       <div className="min-h-0 flex-1">
         <Thread className="h-full" />
       </div>
-      <ViewerBridge />
     </div>
   );
 }

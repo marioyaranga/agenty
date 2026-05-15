@@ -65,6 +65,12 @@ export default async function DocumentsPage() {
               Chat
             </Link>
             <Link
+              href="/seo"
+              className="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-2.5 text-sm font-medium text-foreground hover:bg-muted"
+            >
+              SEO
+            </Link>
+            <Link
               href="/dashboard"
               className="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-2.5 text-sm font-medium text-foreground hover:bg-muted"
             >

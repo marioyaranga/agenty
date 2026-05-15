@@ -5,7 +5,9 @@ import CodeMirror from "@uiw/react-codemirror";
 import { markdown } from "@codemirror/lang-markdown";
 import { html } from "@codemirror/lang-html";
 import { languages } from "@codemirror/language-data";
+import { githubDark, githubLight } from "@uiw/codemirror-theme-github";
 import { Check, Loader2 } from "lucide-react";
+import { useIsDark } from "@/lib/hooks/use-is-dark";
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 
@@ -24,6 +26,7 @@ export function CodeEditor({
   onSave,
   debounceMs = 800,
 }: Props) {
+  const isDark = useIsDark();
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestValueRef = useRef(value);
@@ -98,7 +101,7 @@ export function CodeEditor({
         extensions={extensions}
         height="100%"
         className="h-full overflow-hidden text-xs [&_.cm-editor]:h-full [&_.cm-scroller]:overflow-auto"
-        theme="dark"
+        theme={isDark ? githubDark : githubLight}
         basicSetup={{
           lineNumbers: true,
           foldGutter: true,

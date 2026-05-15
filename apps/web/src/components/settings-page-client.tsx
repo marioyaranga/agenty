@@ -13,6 +13,12 @@ import {
   putTenantGeminiApiKey,
   type TenantAiSettings,
 } from "@/lib/api/tenant-ai-settings";
+import {
+  deleteTenantDataforseoSettings,
+  getTenantSeoSettings,
+  putTenantDataforseoSettings,
+  type TenantSeoSettings,
+} from "@/lib/api/tenant-seo-settings";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import type { TenantOption } from "@/lib/types/tenant";
@@ -33,6 +39,15 @@ export function SettingsPageClient({ tenants }: { tenants: TenantOption[] }) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingModel, setSavingModel] = useState(false);
+  const [seoConfigured, setSeoConfigured] = useState<boolean | null>(null);
+  const [seoLogin, setSeoLogin] = useState("");
+  const [seoPassword, setSeoPassword] = useState("");
+  const [seoLocationCode, setSeoLocationCode] = useState("2484");
+  const [seoLanguageCode, setSeoLanguageCode] = useState("es");
+  const [seoDepth, setSeoDepth] = useState("10");
+  const [seoDepthMin, setSeoDepthMin] = useState(5);
+  const [seoDepthMax, setSeoDepthMax] = useState(30);
+  const [savingSeo, setSavingSeo] = useState(false);
 
   const activeRole = useMemo(() => {
     const t = tenants.find((x) => x.tenantId === activeTenantId);
@@ -66,6 +81,15 @@ export function SettingsPageClient({ tenants }: { tenants: TenantOption[] }) {
     setChatModelDraft(data.agent_chat_model_stored ?? "");
   }, []);
 
+  const applySeoSettings = useCallback((data: TenantSeoSettings) => {
+    setSeoConfigured(data.seo_configured);
+    setSeoLocationCode(String(data.location_code));
+    setSeoLanguageCode(data.language_code);
+    setSeoDepth(String(data.serp_depth));
+    setSeoDepthMin(data.serp_depth_min);
+    setSeoDepthMax(data.serp_depth_max);
+  }, []);
+
   const loadSettings = useCallback(async () => {
     setConfigured(null);
     if (!activeTenantId) {
@@ -94,12 +118,18 @@ export function SettingsPageClient({ tenants }: { tenants: TenantOption[] }) {
         activeTenantId,
       );
       applyAiSettings(data);
+      const seoData = await getTenantSeoSettings(
+        apiBase,
+        sessionData.session.access_token,
+        activeTenantId,
+      );
+      applySeoSettings(seoData);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Error al cargar");
     } finally {
       setLoading(false);
     }
-  }, [activeTenantId, applyAiSettings]);
+  }, [activeTenantId, applyAiSettings, applySeoSettings]);
 
   useEffect(() => {
     void loadSettings();
@@ -188,6 +218,110 @@ export function SettingsPageClient({ tenants }: { tenants: TenantOption[] }) {
       setMessage(e instanceof Error ? e.message : "Error al quitar");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveSeo() {
+    setMessage(null);
+    if (!canEdit) {
+      setMessage("Solo owner o admin pueden guardar DataForSEO.");
+      return;
+    }
+    const login = seoLogin.trim();
+    const password = seoPassword.trim();
+    if (!login || !password) {
+      setMessage("Ingresá login y password de DataForSEO.");
+      return;
+    }
+    const loc = Number(seoLocationCode);
+    const depth = Number(seoDepth);
+    if (!Number.isFinite(loc) || loc < 1) {
+      setMessage("location_code inválido.");
+      return;
+    }
+    if (!Number.isFinite(depth) || depth < seoDepthMin || depth > seoDepthMax) {
+      setMessage(`serp_depth debe estar entre ${seoDepthMin} y ${seoDepthMax}.`);
+      return;
+    }
+    const apiBase = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "");
+    if (!apiBase || !activeTenantId) {
+      setMessage("Configuración incompleta (API o espacio).");
+      return;
+    }
+    const supabase = createClient();
+    const { data: sessionData, error: sessionError } =
+      await supabase.auth.getSession();
+    if (sessionError || !sessionData.session?.access_token) {
+      setMessage(
+        sessionError?.message ??
+          "No hay sesión con access_token. Iniciá sesión de nuevo.",
+      );
+      return;
+    }
+    setSavingSeo(true);
+    try {
+      const data = await putTenantDataforseoSettings(
+        apiBase,
+        sessionData.session.access_token,
+        activeTenantId,
+        {
+          dataforseo_login: login,
+          dataforseo_password: password,
+          location_code: loc,
+          language_code: seoLanguageCode.trim() || "es",
+          serp_depth: depth,
+        },
+      );
+      setSeoLogin("");
+      setSeoPassword("");
+      applySeoSettings(data);
+      setMessage("Conexión DataForSEO guardada.");
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Error al guardar SEO");
+    } finally {
+      setSavingSeo(false);
+    }
+  }
+
+  async function clearSeo() {
+    setMessage(null);
+    if (!canEdit) {
+      setMessage("Solo owner o admin pueden quitar credenciales DataForSEO.");
+      return;
+    }
+    const apiBase = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "");
+    if (!apiBase || !activeTenantId) {
+      setMessage("Configuración incompleta (API o espacio).");
+      return;
+    }
+    const supabase = createClient();
+    const { data: sessionData, error: sessionError } =
+      await supabase.auth.getSession();
+    if (sessionError || !sessionData.session?.access_token) {
+      setMessage(
+        sessionError?.message ??
+          "No hay sesión con access_token. Iniciá sesión de nuevo.",
+      );
+      return;
+    }
+    setSavingSeo(true);
+    try {
+      await deleteTenantDataforseoSettings(
+        apiBase,
+        sessionData.session.access_token,
+        activeTenantId,
+      );
+      const data = await getTenantSeoSettings(
+        apiBase,
+        sessionData.session.access_token,
+        activeTenantId,
+      );
+      applySeoSettings(data);
+      setMessage("Credenciales DataForSEO eliminadas. Los defaults del espacio se conservan.");
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Error al quitar SEO");
+    } finally {
+      setSavingSeo(false);
     }
   }
 
@@ -359,6 +493,112 @@ export function SettingsPageClient({ tenants }: { tenants: TenantOption[] }) {
         ) : null}
       </section>
 
+      <section className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">
+        <h2 className="text-sm font-medium text-foreground">DataForSEO (por espacio)</h2>
+        <p className="text-sm text-muted-foreground">
+          Credenciales solo para agentes SEO (volumen y SERP). No hay fallback global:
+          cada espacio debe configurar su cuenta.
+        </p>
+        <p className="text-xs text-muted-foreground">
+          SERP: modo <span className="font-medium text-foreground">advanced</span> (fijo en
+          v1). Profundidad entre {seoDepthMin} y {seoDepthMax}.
+        </p>
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Cargando…</p>
+        ) : seoConfigured !== null ? (
+          <p className="text-sm text-foreground">
+            Estado:{" "}
+            <span className="font-medium">
+              {seoConfigured ? "credenciales configuradas" : "sin credenciales"}
+            </span>
+          </p>
+        ) : null}
+        {tenants.length > 0 && !canEdit ? (
+          <p className="text-sm text-muted-foreground" role="status">
+            Tu rol no permite cambiar DataForSEO. Contactá a un owner o admin.
+          </p>
+        ) : tenants.length > 0 && canEdit ? (
+          <>
+            <Input
+              type="text"
+              autoComplete="off"
+              disabled={savingSeo || !activeTenantId}
+              value={seoLogin}
+              onChange={(e) => setSeoLogin(e.target.value)}
+              placeholder="Login API DataForSEO"
+            />
+            <Input
+              type="password"
+              autoComplete="off"
+              disabled={savingSeo || !activeTenantId}
+              value={seoPassword}
+              onChange={(e) => setSeoPassword(e.target.value)}
+              placeholder="Password API DataForSEO"
+            />
+            <div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    location_code
+                  </span>
+                  <Input
+                    type="number"
+                    disabled={savingSeo || !activeTenantId}
+                    value={seoLocationCode}
+                    onChange={(e) => setSeoLocationCode(e.target.value)}
+                    placeholder="2484"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    language_code
+                  </span>
+                  <Input
+                    type="text"
+                    disabled={savingSeo || !activeTenantId}
+                    value={seoLanguageCode}
+                    onChange={(e) => setSeoLanguageCode(e.target.value)}
+                    placeholder="es"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    serp_depth
+                  </span>
+                  <Input
+                    type="number"
+                    min={seoDepthMin}
+                    max={seoDepthMax}
+                    disabled={savingSeo || !activeTenantId}
+                    value={seoDepth}
+                    onChange={(e) => setSeoDepth(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                disabled={savingSeo || !activeTenantId}
+                onClick={() => void saveSeo()}
+              >
+                {savingSeo ? "Guardando…" : "Guardar conexión"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={savingSeo || !activeTenantId || !seoConfigured}
+                onClick={() => void clearSeo()}
+              >
+                Quitar credenciales
+              </Button>
+            </div>
+          </>
+        ) : null}
+      </section>
+
       {message ? (
         <p className="text-sm text-muted-foreground" role="status">
           {message}
@@ -385,6 +625,13 @@ export function SettingsPageClient({ tenants }: { tenants: TenantOption[] }) {
           className="font-medium text-foreground underline-offset-4 hover:underline"
         >
           Chat
+        </Link>
+        {" · "}
+        <Link
+          href="/seo"
+          className="font-medium text-foreground underline-offset-4 hover:underline"
+        >
+          SEO
         </Link>
       </p>
     </div>

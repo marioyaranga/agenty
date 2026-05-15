@@ -1,6 +1,6 @@
 # workyAI API (Flask)
 
-Servicio con `GET /health`, CORS restringido a `WEB_ORIGIN`, **Fase 2:** `GET /v1/me` (JWT Supabase vía JWKS, comprobación opcional de tenant con `service_role`), **Fase 3:** documentos (`/v1/tenants/<tenant_id>/documents`, descarga y borrado) con Storage privado `tenant_documents`, **Fase 4:** RAG (`/v1/tenants/<tenant_id>/rag/query`) y **Fase 5:** agente conversacional (`POST /v1/tenants/<tenant_id>/agent/chat`) con LangGraph, persistencia `agent_runs` / `agent_steps` y LangSmith opcional, **Fase 6:** configuración de IA por tenant (`/v1/tenants/<tenant_id>/settings/ai`) con clave Gemini cifrada (Fernet) y fallback a `GEMINI_API_KEY`, **Fase 7:** grafo con reintentos y `audit_events` + `GET .../audit` (owner/admin), **Fase 8:** notificaciones `in_app_notifications` insertadas desde Flask al terminar indexación Markdown o runs del agente (Realtime en cliente).
+Servicio con `GET /health`, CORS restringido a `WEB_ORIGIN`, **Fase 2:** `GET /v1/me` (JWT Supabase vía JWKS, comprobación opcional de tenant con `service_role`), **Fase 3:** documentos (`/v1/tenants/<tenant_id>/documents`, descarga y borrado) con Storage privado `tenant_documents`, **Fase 4:** RAG (`/v1/tenants/<tenant_id>/rag/query`) y **Fase 5:** agente conversacional (`POST /v1/tenants/<tenant_id>/agent/chat`) con LangGraph, persistencia `agent_runs` / `agent_steps` y LangSmith opcional, **Fase 6:** configuración de IA por tenant (`/v1/tenants/<tenant_id>/settings/ai`) con clave Gemini cifrada (Fernet) y fallback a `GEMINI_API_KEY`, **Fase 7:** grafo con reintentos y `audit_events` + `GET .../audit` (owner/admin), **Fase 8:** notificaciones `in_app_notifications` insertadas desde Flask al terminar indexación Markdown o runs del agente (Realtime en cliente), **Fase 12:** agentes SEO con DataForSEO por tenant (`/settings/seo`, `POST .../agent/seo/chat`).
 
 ## Variables de entorno
 
@@ -35,6 +35,10 @@ Servicio con `GET /health`, CORS restringido a `WEB_ORIGIN`, **Fase 2:** `GET /v
 - `PATCH /v1/tenants/<tenant_id>/settings/ai` → JSON `{ "agent_chat_model": "<id>" | null }`; **owner** o **admin**; `null` restaura el predeterminado del servidor.
 - `PUT /v1/tenants/<tenant_id>/settings/ai` → JSON `{ "gemini_api_key": "..." }`; **owner** o **admin**; cifrado Fernet en base.
 - `DELETE /v1/tenants/<tenant_id>/settings/ai` → borra solo la clave cifrada del tenant (vuelve al fallback `GEMINI_API_KEY`); **owner** o **admin**; no elimina la fila ni el modelo elegido.
+- `GET /v1/tenants/<tenant_id>/settings/seo` → `seo_configured`, `location_code`, `language_code`, `serp_mode`, `serp_depth`, límites de depth; cualquier miembro.
+- `PUT /v1/tenants/<tenant_id>/settings/seo` → JSON con `dataforseo_login`, `dataforseo_password`, `location_code`, `language_code`, `serp_depth`; **owner** o **admin**; valida credenciales contra DataForSEO; cifrado Fernet; **sin fallback global**.
+- `DELETE /v1/tenants/<tenant_id>/settings/seo` → borra solo credenciales DataForSEO; conserva defaults de ubicación/idioma/depth; **owner** o **admin**.
+- `POST /v1/tenants/<tenant_id>/agent/seo/chat` → JSON `{ "message": "...", "thread_id": ... }`; **editor+**; requiere DataForSEO configurado; orquestador volumen/SERP (máx. 50 keywords volumen, 10 SERP); respuesta compatible con Assistant UI.
 
 ## Local (opcional)
 
