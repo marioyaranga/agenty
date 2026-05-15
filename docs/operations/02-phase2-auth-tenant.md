@@ -76,3 +76,9 @@ Ese mensaje lo devuelve el cliente de Supabase (PostgREST) cuando **la tabla no 
 **Qué hacer:** aplicá el SQL de `supabase/migrations/20260514120000_phase2_tenants_memberships.sql` en el **mismo** proyecto que usan las variables de Vercel (Dashboard → SQL Editor → Run, o `supabase db push` con el proyecto correcto). Verificá en **Table Editor** que existan `public.tenants` y `public.tenant_memberships`. Luego **cerrá sesión** en la app y volvé a entrar para refrescar la sesión y la caché del cliente.
 
 No suele ser un error de nombre en el código del repo: el nombre `tenant_memberships` es el canónico de la fase 2.
+
+## 10. Diagnóstico: panel sin error pero “no hay espacios visibles”
+
+Si **no** aparece “No se pudieron cargar los espacios” y el selector queda vacío, la consulta a `tenant_memberships` devolvió **cero filas** para tu `auth.uid()`. Suele pasar cuando la cuenta se creó **antes** de existir el trigger `on_auth_user_created_bootstrap_tenant` (no se insertó tenant ni membresía en el alta).
+
+**Qué hacer:** aplicá la migración idempotente `supabase/migrations/20260514210000_phase2_backfill_users_without_membership.sql` (incluida en el repo; `supabase db push` en el proyecto correcto) o ejecutá su SQL en el Dashboard. Luego recargá el panel o cerrá sesión y volvé a entrar.

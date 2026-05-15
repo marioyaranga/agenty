@@ -18,7 +18,9 @@ export function TenantSwitcher({
   if (tenants.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        No hay espacios visibles. Aplicá la migración Fase 2 y volvé a iniciar sesión.
+        No hay espacios visibles para tu usuario. Cerrá sesión y volvé a entrar. Si la migración
+        multi-tenant se aplicó después de crear tu cuenta, puede faltar una membresía: revisá el
+        backfill en la documentación de la fase 2.
       </p>
     );
   }
