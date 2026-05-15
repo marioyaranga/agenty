@@ -194,12 +194,13 @@ export function SettingsPageClient({ tenants }: { tenants: TenantOption[] }) {
             </span>
           </p>
         ) : null}
-        {!canEdit ? (
+        {/* Sin membresías cargadas, activeRole queda vacío y canEdit sería false: no mostrar "solo lectura" hasta tener un espacio real. */}
+        {tenants.length > 0 && !canEdit ? (
           <p className="text-sm text-muted-foreground" role="status">
             Tu rol en este espacio es solo lectura para esta configuración. Contactá a un
             owner o admin si necesitás cambiar la clave.
           </p>
-        ) : (
+        ) : tenants.length > 0 && canEdit ? (
           <>
             <Input
               type="password"
@@ -238,7 +239,7 @@ export function SettingsPageClient({ tenants }: { tenants: TenantOption[] }) {
               </Button>
             </div>
           </>
-        )}
+        ) : null}
         {message ? (
           <p className="text-sm text-muted-foreground" role="status">
             {message}

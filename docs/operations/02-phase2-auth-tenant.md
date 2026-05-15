@@ -68,3 +68,11 @@ No añadas `service_role` ni secretos con prefijo `NEXT_PUBLIC_`.
 ## 8. Respaldo
 
 Antes de migraciones en producción, usá **Backups** del proyecto Supabase (plan permitido) o `pg_dump` según política interna.
+
+## 9. Diagnóstico: `Could not find the table 'public.tenant_memberships' in the schema cache`
+
+Ese mensaje lo devuelve el cliente de Supabase (PostgREST) cuando **la tabla no existe** en el proyecto al que apuntan `NEXT_PUBLIC_SUPABASE_URL` y la clave pública: la migración de esta fase **no se aplicó** en ese proyecto remoto, o el front está enlazado a **otro** proyecto Supabase distinto del que migraste.
+
+**Qué hacer:** aplicá el SQL de `supabase/migrations/20260514120000_phase2_tenants_memberships.sql` en el **mismo** proyecto que usan las variables de Vercel (Dashboard → SQL Editor → Run, o `supabase db push` con el proyecto correcto). Verificá en **Table Editor** que existan `public.tenants` y `public.tenant_memberships`. Luego **cerrá sesión** en la app y volvé a entrar para refrescar la sesión y la caché del cliente.
+
+No suele ser un error de nombre en el código del repo: el nombre `tenant_memberships` es el canónico de la fase 2.
