@@ -89,7 +89,7 @@ def build_agent_graph(
     min_ok_sim = _read_float("AGENT_CONTEXT_OK_MIN_SIMILARITY", 0.24)
     match_count = _read_int("AGENT_MATCH_COUNT", 10)
     max_attempts = min(2, max(1, _read_int("AGENT_MAX_RETRIEVAL_ATTEMPTS", 2)))
-    max_tool_iters = min(10, max(1, _read_int("AGENT_MAX_TOOL_ITERATIONS", 5)))
+    max_tool_iters = min(10, max(1, _read_int("AGENT_MAX_TOOL_ITERATIONS", 8)))
 
     step_idx = [0]
 
@@ -145,14 +145,16 @@ def build_agent_graph(
 
     def route_after_retrieve(
         state: AgentGraphState,
-    ) -> Literal["generate", "rewrite_query", "respond_no_context"]:
+    ) -> Literal["generate", "rewrite_query"]:
         matches = list(state.get("matches") or [])
         if _context_ok(matches, min_best_similarity=min_ok_sim):
             return "generate"
         n = int(state.get("retrieval_count") or 0)
         if n < max_attempts:
             return "rewrite_query"
-        return "respond_no_context"
+        # Sin contexto RAG suficiente: pasar a generate de todas formas para que
+        # Gemini pueda invocar tools SEO u otras si el mensaje lo requiere.
+        return "generate"
 
     def rewrite_query(state: AgentGraphState) -> dict[str, Any]:
         with traced_graph_node(
@@ -285,6 +287,7 @@ def build_agent_graph(
                 "tool_create_folder", "tool_create_document",
                 "tool_update_document_content", "tool_rename",
                 "tool_move", "tool_delete_document", "tool_delete_folder",
+                "tool_seo_search_volume", "tool_seo_serp_organic",
             })
             safe_key = tool_name if tool_name in _VALID_TOOL_KEYS else "tool_create_folder"
             insert_agent_step(
@@ -320,7 +323,6 @@ def build_agent_graph(
         {
             "generate": "generate",
             "rewrite_query": "rewrite_query",
-            "respond_no_context": "respond_no_context",
         },
     )
     g.add_edge("rewrite_query", "retrieve")

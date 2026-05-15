@@ -1,13 +1,19 @@
-"""POST /v1/tenants/<tenant_id>/agent/seo/chat — orquestador SEO (editor+)."""
+"""POST /v1/tenants/<tenant_id>/agent/seo/chat — alias de compatibilidad.
+
+Desde fase 13 este endpoint delega al grafo unificado (build_agent_graph).
+Las tools SEO (tool_seo_search_volume, tool_seo_serp_organic) están integradas
+en el loop de function calling de Gemini. El endpoint se mantiene para no romper
+clientes que ya usan esta URL; la respuesta incluye steps igual que antes.
+"""
 
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
 from typing import Any
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, jsonify, request
 
+from agent.graph import build_agent_graph
 from agent.persistence import finalize_agent_run, insert_agent_run, list_agent_steps_for_run
 from agent.tracing import (
     finish_langsmith_root,
@@ -20,9 +26,8 @@ from audit_log import record_audit
 from gemini_keys import get_gemini_api_key_for_tenant
 from notifications import notify_agent_chat_outcome
 from postgrest_utils import first_dict_from_execute
-from seo.seo_graph import build_seo_graph
+from seo.seo_keys import dataforseo_configured
 from seo.seo_steps import format_seo_steps_for_ui
-from seo.seo_keys import dataforseo_configured, get_dataforseo_secrets_for_tenant, get_effective_seo_defaults
 from tenant_http import (
     admin_supabase_client,
     membership_role,
@@ -36,18 +41,8 @@ bp = Blueprint("seo_agent", __name__, url_prefix="/v1")
 EDITOR_ROLES = frozenset({"editor", "admin", "owner"})
 
 
-def _fetch_thread(client: Any, thread_id: str, tenant_id: str) -> dict[str, Any] | None:
-    res = (
-        client.table("agent_threads")
-        .select("*")
-        .eq("id", thread_id)
-        .eq("tenant_id", tenant_id)
-        .execute()
-    )
-    return first_dict_from_execute(res)
-
-
 def _bump_thread_updated_at(client: Any, thread_id: str) -> None:
+    from datetime import datetime, timezone
     now = datetime.now(timezone.utc).isoformat()
     try:
         client.table("agent_threads").update({"updated_at": now}).eq("id", thread_id).execute()
@@ -64,7 +59,14 @@ def _get_or_create_thread(
     message: str,
 ) -> tuple[str, Any]:
     if thread_id:
-        thread = _fetch_thread(client, thread_id, tenant_id)
+        res = (
+            client.table("agent_threads")
+            .select("*")
+            .eq("id", thread_id)
+            .eq("tenant_id", tenant_id)
+            .execute()
+        )
+        thread = first_dict_from_execute(res)
         if not thread:
             return "", (jsonify({"error": "thread no encontrado"}), 404)
         if thread.get("user_id") != user_id:
@@ -109,25 +111,14 @@ def seo_chat(tenant_id: str):
         return (
             jsonify(
                 {
-                    "error": "DataForSEO no está configurado para este espacio. "
-                    "Configurá las credenciales en Ajustes → DataForSEO."
+                    "error": (
+                        "DataForSEO no está configurado para este espacio. "
+                        "Configurá las credenciales en Ajustes → DataForSEO."
+                    )
                 }
             ),
             400,
         )
-
-    secrets = get_dataforseo_secrets_for_tenant(client, tenant_id)
-    if not secrets:
-        return (
-            jsonify(
-                {
-                    "error": "No se pudieron cargar las credenciales DataForSEO. "
-                    "Volvé a guardarlas en Ajustes."
-                }
-            ),
-            502,
-        )
-    dfs_login, dfs_password = secrets
 
     body = request.get_json(silent=True) or {}
     message = (body.get("message") or "").strip()
@@ -135,7 +126,6 @@ def seo_chat(tenant_id: str):
         return jsonify({"error": "message es obligatorio"}), 400
 
     raw_thread_id = (body.get("thread_id") or "").strip() or None
-
     thread_id, err = _get_or_create_thread(
         client,
         tenant_id=tenant_id,
@@ -149,7 +139,6 @@ def seo_chat(tenant_id: str):
     run_id = str(uuid.uuid4())
     ls_root: Any = None
     trace_id: str | None = None
-    seo_defaults = get_effective_seo_defaults(client, tenant_id)
 
     try:
         with optional_langsmith_root(
@@ -170,30 +159,20 @@ def seo_chat(tenant_id: str):
 
             gemini_key = get_gemini_api_key_for_tenant(client, tenant_id)
             chat_model = get_agent_chat_model_for_tenant(client, tenant_id)
-            graph = build_seo_graph(
+            graph = build_agent_graph(
                 client,
                 run_id,
                 gemini_api_key=gemini_key,
                 chat_model=chat_model,
-                dataforseo_login=dfs_login,
-                dataforseo_password=dfs_password,
-                seo_defaults=seo_defaults,
+                user_id=user_id,
                 langsmith_parent=ls_root,
             )
             final = graph.invoke(
-                {
-                    "tenant_id": tenant_id,
-                    "user_id": user_id,
-                    "message": message,
-                    "gemini_api_key": gemini_key,
-                    "chat_model": chat_model,
-                    "seo_defaults": seo_defaults,
-                    "dataforseo_login": dfs_login,
-                    "dataforseo_password": dfs_password,
-                }
+                {"tenant_id": tenant_id, "user_id": user_id, "message": message}
             )
 
             answer = str(final.get("answer") or "")
+            citations = list(final.get("citations") or [])
             step_rows = list_agent_steps_for_run(client, run_id)
             steps = format_seo_steps_for_ui(step_rows)
 
@@ -203,7 +182,7 @@ def seo_chat(tenant_id: str):
                 status="completed",
                 output_message=answer,
                 langsmith_trace_id=trace_id,
-                citations=[],
+                citations=citations,
             )
 
             _bump_thread_updated_at(client, thread_id)
@@ -241,7 +220,7 @@ def seo_chat(tenant_id: str):
                     "run_id": run_id,
                     "thread_id": thread_id,
                     "answer": answer,
-                    "citations": [],
+                    "citations": citations,
                     "steps": steps,
                     "langsmith_trace_id": trace_id,
                     "langsmith_enabled": langsmith_api_key_configured(),
@@ -251,7 +230,6 @@ def seo_chat(tenant_id: str):
         )
     except Exception as exc:  # noqa: BLE001
         err_s = str(exc)[:8000]
-        current_app.logger.exception("seo_chat falló: %s", exc)
         try:
             finalize_agent_run(
                 client,

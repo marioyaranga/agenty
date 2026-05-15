@@ -144,3 +144,7 @@ export function useSeoSteps() {
   }
   return ctx;
 }
+
+export function useOptionalSeoSteps(): SeoStepsContextValue | null {
+  return useContext(SeoStepsContext);
+}

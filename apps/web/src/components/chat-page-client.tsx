@@ -5,6 +5,7 @@ import { AssistantRuntimeProvider, useAssistantRuntime } from "@assistant-ui/rea
 import { useWorkspace } from "@/lib/contexts/workspace-context";
 import { useChatThreads } from "@/lib/contexts/chat-thread-context";
 import { useWorkyAiRuntime } from "@/lib/assistant-ui/workyai-runtime";
+import { SeoStepsProvider, useSeoSteps } from "@/lib/contexts/seo-steps-context";
 import { Thread } from "@/components/assistant-ui/thread";
 import { ChatHeader } from "@/components/chat/chat-header";
 import type { TenantOption } from "@/lib/types/tenant";
@@ -22,11 +23,20 @@ export function ChatPageClient({ tenants }: { tenants: TenantOption[] }) {
     );
   }
 
-  return <ChatInner tenantId={activeTenantId} />;
+  return (
+    <SeoStepsProvider>
+      <ChatInner tenantId={activeTenantId} />
+    </SeoStepsProvider>
+  );
 }
 
 function ChatInner({ tenantId }: { tenantId: string }) {
-  const { runtime, threadIdRef } = useWorkyAiRuntime(tenantId);
+  const { onRunStart, onRunComplete, onRunEnd } = useSeoSteps();
+  const { runtime, threadIdRef } = useWorkyAiRuntime(tenantId, {
+    onRunStart,
+    onRunComplete,
+    onRunEnd,
+  });
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>

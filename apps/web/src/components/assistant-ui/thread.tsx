@@ -5,11 +5,14 @@ import {
   MessagePrimitive,
   ComposerPrimitive,
   MessagePartPrimitive,
+  useAuiState,
 } from "@assistant-ui/react";
 import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
 import remarkGfm from "remark-gfm";
 import { ArrowUp, StopCircle, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useOptionalSeoSteps } from "@/lib/contexts/seo-steps-context";
+import { SeoSubagentsPanel } from "@/components/seo/seo-subagents-panel";
 
 // ---------------------------------------------------------------------------
 // Thread principal
@@ -32,6 +35,8 @@ export function Thread({ className }: { className?: string }) {
           }}
         />
 
+        <RunningStepsInline />
+
         <div className="min-h-8 shrink-0" aria-hidden />
       </ThreadPrimitive.Viewport>
 
@@ -51,6 +56,35 @@ export function Thread({ className }: { className?: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// Pasos SEO en tiempo real (visible durante el run)
+// ---------------------------------------------------------------------------
+
+function RunningStepsInline() {
+  const steps = useOptionalSeoSteps();
+  if (!steps?.isRunning || !steps.activeSteps?.length) return null;
+
+  return (
+    <div className="flex w-full justify-start gap-3 pl-10">
+      <SeoSubagentsPanel steps={steps.activeSteps} defaultOpen />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Turn index helper (para asociar pasos al mensaje del asistente correcto)
+// ---------------------------------------------------------------------------
+
+function useAssistantTurnIndex(): number {
+  return useAuiState((s) => {
+    const messages = s.thread.messages;
+    const idx = messages.findIndex((m) => m.id === s.message.id);
+    if (idx < 0) return 0;
+    return messages.slice(0, idx + 1).filter((m) => m.role === "assistant")
+      .length - 1;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Pantalla de bienvenida
 // ---------------------------------------------------------------------------
 
@@ -61,7 +95,7 @@ function WelcomeScreen() {
         ¿En qué puedo ayudarte?
       </p>
       <p className="text-sm text-muted-foreground">
-        Hacé una pregunta sobre tu documentación indexada
+        Hacé una pregunta sobre tu documentación, pedí SEO o gestioná archivos
       </p>
     </div>
   );
@@ -96,14 +130,20 @@ function UserTextPart() {
 // ---------------------------------------------------------------------------
 
 function AssistantMessage() {
+  const turnIndex = useAssistantTurnIndex();
+  const stepsCtx = useOptionalSeoSteps();
+  const steps = stepsCtx?.getStepsForTurn(turnIndex);
+
   return (
     <MessagePrimitive.Root className="flex w-full justify-start gap-3">
-      {/* Avatar pequeño */}
       <div className="mt-1 flex size-7 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-foreground">
         AI
       </div>
 
-      <div className="flex min-w-0 max-w-[85%] flex-col gap-1">
+      <div className="flex min-w-0 max-w-[85%] flex-col gap-2">
+        {steps && steps.length > 0 ? (
+          <SeoSubagentsPanel steps={steps} defaultOpen={false} />
+        ) : null}
         <div className="rounded-2xl rounded-tl-sm border bg-card px-4 py-3 shadow-sm">
           <MessagePrimitive.Parts
             components={{ Text: AssistantMarkdownTextPart }}
@@ -138,7 +178,7 @@ function Composer() {
       <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-2xl border bg-background px-4 py-2 shadow-sm focus-within:ring-1 focus-within:ring-ring">
         <ComposerPrimitive.Input
           autoFocus
-          placeholder="Escribí tu pregunta…"
+          placeholder="Preguntá sobre tus docs, pedí volumen SEO o gestioná archivos…"
           rows={1}
           className="max-h-40 min-h-[1.5rem] flex-1 resize-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
         />

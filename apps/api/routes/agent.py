@@ -15,8 +15,9 @@ from typing import Any
 from flask import Blueprint, current_app, jsonify, request
 
 from agent.graph import build_agent_graph
-from agent.persistence import finalize_agent_run, insert_agent_run
+from agent.persistence import finalize_agent_run, insert_agent_run, list_agent_steps_for_run
 from agent_chat_models import get_agent_chat_model_for_tenant
+from seo.seo_steps import format_seo_steps_for_ui
 from agent.tracing import (
     finish_langsmith_root,
     langsmith_api_key_configured,
@@ -389,6 +390,8 @@ def agent_chat(tenant_id: str):
 
             answer = str(final.get("answer") or "")
             citations = list(final.get("citations") or [])
+            step_rows = list_agent_steps_for_run(client, run_id)
+            steps = format_seo_steps_for_ui(step_rows)
 
             finalize_agent_run(
                 client,
@@ -439,6 +442,7 @@ def agent_chat(tenant_id: str):
                     "thread_id": thread_id,
                     "answer": answer,
                     "citations": citations,
+                    "steps": steps,
                     "langsmith_trace_id": trace_id,
                     "langsmith_enabled": langsmith_api_key_configured(),
                 }

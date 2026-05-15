@@ -64,7 +64,7 @@ export default async function DashboardPage() {
               Chat
             </Link>
             <Link
-              href="/seo"
+              href="/chat"
               className="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-2.5 text-sm font-medium text-foreground hover:bg-muted"
             >
               SEO

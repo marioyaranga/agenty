@@ -11,6 +11,7 @@ from typing import Any
 
 from supabase import Client
 
+from agent.seo_tools import tool_seo_search_volume, tool_seo_serp_organic
 from audit_log import record_audit
 from notifications import notify_document_index_outcome
 from postgrest_utils import first_dict_from_execute
@@ -496,6 +497,8 @@ TOOL_REGISTRY: dict[str, Any] = {
     "tool_move": tool_move,
     "tool_delete_document": tool_delete_document,
     "tool_delete_folder": tool_delete_folder,
+    "tool_seo_search_volume": tool_seo_search_volume,
+    "tool_seo_serp_organic": tool_seo_serp_organic,
 }
 
 
@@ -622,6 +625,63 @@ GEMINI_TOOL_DECLARATIONS: list[dict[str, Any]] = [
                 "folder_id": {"type": "string", "description": "UUID de la carpeta a eliminar"},
             },
             "required": ["folder_id"],
+        },
+    },
+    {
+        "name": "tool_seo_search_volume",
+        "description": (
+            "Consulta el volumen de búsqueda mensual de keywords vía DataForSEO (Google Ads). "
+            "Usá esta tool cuando el usuario pida volumen de búsqueda, search volume, tendencias "
+            "de keywords o métricas de demanda de búsqueda."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "keywords": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Lista de keywords a consultar (máximo 50).",
+                },
+                "location_code": {
+                    "type": "integer",
+                    "description": "Código de ubicación DataForSEO (omitir para usar el default del espacio, ej. 2484 para México).",
+                },
+                "language_code": {
+                    "type": "string",
+                    "description": "Código de idioma DataForSEO (omitir para usar el default del espacio, ej. 'es').",
+                },
+            },
+            "required": ["keywords"],
+        },
+    },
+    {
+        "name": "tool_seo_serp_organic",
+        "description": (
+            "Consulta el SERP orgánico de Google para una keyword vía DataForSEO. "
+            "Usá esta tool cuando el usuario pida resultados de búsqueda, ranking, posiciones en "
+            "Google, SERP o top 10 orgánico de una keyword específica."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "keyword": {
+                    "type": "string",
+                    "description": "Keyword a consultar en el SERP de Google.",
+                },
+                "depth": {
+                    "type": "integer",
+                    "description": "Número de resultados a recuperar (5-30, omitir para usar el default del espacio).",
+                },
+                "location_code": {
+                    "type": "integer",
+                    "description": "Código de ubicación DataForSEO (omitir para usar el default del espacio).",
+                },
+                "language_code": {
+                    "type": "string",
+                    "description": "Código de idioma DataForSEO (omitir para usar el default del espacio).",
+                },
+            },
+            "required": ["keyword"],
         },
     },
 ]

@@ -597,13 +597,6 @@ export function SettingsPageClient({ tenants }: { tenants: TenantOption[] }) {
         >
           Chat
         </Link>
-        {" · "}
-        <Link
-          href="/seo"
-          className="font-medium text-foreground underline-offset-4 hover:underline"
-        >
-          SEO
-        </Link>
       </p>
     </div>
   );

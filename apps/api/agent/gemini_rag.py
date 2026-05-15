@@ -146,16 +146,26 @@ def answer_with_gemini_with_tools(
         tname = tr.get("tool_name", "")
         result = tr.get("result", {})
         if result.get("ok"):
-            tool_history += f"\n[Tool {tname} ejecutada con éxito: {result}]"
+            md = result.get("markdown")
+            if md:
+                tool_history += (
+                    f"\n[Tool {tname} ejecutada con éxito. "
+                    f"Incluí los siguientes datos en tu respuesta:\n{md}]"
+                )
+            else:
+                tool_history += f"\n[Tool {tname} ejecutada con éxito: {result}]"
         else:
             tool_history += f"\n[Tool {tname} falló: {result.get('error', 'desconocido')}]"
 
     system_prompt = (
         "Sos un asistente inteligente en español. Podés responder preguntas usando el "
-        "contexto RAG disponible y también podés usar tools para crear, editar, mover o "
-        "eliminar archivos y carpetas del espacio de trabajo del usuario. "
-        "Si el usuario te pide hacer algo sobre archivos, usá las tools disponibles. "
-        "Si el contexto RAG no alcanza para responder, decilo con claridad."
+        "contexto RAG disponible y también podés usar tools para: "
+        "1) crear, editar, mover o eliminar archivos y carpetas del espacio de trabajo; "
+        "2) consultar volumen de búsqueda mensual de keywords (tool_seo_search_volume); "
+        "3) consultar el SERP orgánico de Google para una keyword (tool_seo_serp_organic). "
+        "Si el usuario pide SEO, volumen de búsqueda, SERP o ranking, usá las tools SEO. "
+        "Si el contexto RAG no alcanza para responder, decilo con claridad. "
+        "Cuando una tool SEO devuelva datos con markdown ya formateado, incluílo en la respuesta tal cual."
     )
     parts = [system_prompt]
     if context_lines:
