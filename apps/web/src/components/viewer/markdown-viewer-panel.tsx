@@ -229,7 +229,7 @@ function SplitView({
   onSave: (v: string) => Promise<void>;
 }) {
   return (
-    <ResizablePanelGroup direction="horizontal" className="h-full">
+    <ResizablePanelGroup orientation="horizontal" className="h-full">
       <ResizablePanel minSize={20} defaultSize={50}>
         <CodeEditor
           value={activeTab.content}
