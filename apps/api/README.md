@@ -38,7 +38,7 @@ Servicio con `GET /health`, CORS restringido a `WEB_ORIGIN`, **Fase 2:** `GET /v
 - `GET /v1/tenants/<tenant_id>/settings/seo` → `seo_configured`, `location_code`, `language_code`, `serp_mode`, `serp_depth`, límites de depth; cualquier miembro.
 - `PUT /v1/tenants/<tenant_id>/settings/seo` → JSON con `dataforseo_login`, `dataforseo_password`, `location_code`, `language_code`, `serp_depth`; **owner** o **admin**; valida credenciales contra DataForSEO; cifrado Fernet; **sin fallback global**.
 - `DELETE /v1/tenants/<tenant_id>/settings/seo` → borra solo credenciales DataForSEO; conserva defaults de ubicación/idioma/depth; **owner** o **admin**.
-- `POST /v1/tenants/<tenant_id>/agent/seo/chat` → JSON `{ "message": "...", "thread_id": ... }`; **editor+**; requiere DataForSEO configurado; orquestador volumen/SERP (máx. 50 keywords volumen, 10 SERP); respuesta compatible con Assistant UI.
+- `POST /v1/tenants/<tenant_id>/agent/seo/chat` → JSON `{ "message": "...", "thread_id": ... }`; **editor+**; requiere DataForSEO configurado; orquestador volumen/SERP (máx. 50 keywords volumen, 10 SERP); respuesta `{ answer, steps[], run_id, thread_id, ... }` para panel de subagentes en `/seo`.
 
 ## Local (opcional)
 

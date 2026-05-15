@@ -47,6 +47,19 @@ def insert_agent_step(
     ).execute()
 
 
+def list_agent_steps_for_run(client: Client, run_id: str) -> list[dict[str, Any]]:
+    """Pasos de un run ordenados por `step_index` ascendente."""
+    res = (
+        client.table("agent_steps")
+        .select("step_key, step_index, payload, created_at")
+        .eq("run_id", run_id)
+        .order("step_index", desc=False)
+        .execute()
+    )
+    data = getattr(res, "data", None)
+    return list(data) if isinstance(data, list) else []
+
+
 def finalize_agent_run(
     client: Client,
     *,

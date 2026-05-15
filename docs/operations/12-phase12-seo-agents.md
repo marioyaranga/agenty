@@ -40,12 +40,14 @@ Aplicar la migración antes de usar los endpoints.
 
 Body chat: `{ "message": "...", "thread_id": null | uuid }`.
 
-Respuesta: `run_id`, `thread_id`, `answer`, `citations: []`, LangSmith opcional.
+Respuesta: `run_id`, `thread_id`, `answer`, `citations: []`, **`steps`** (subagentes para la UI), LangSmith opcional.
+
+Cada run persiste pasos en `agent_steps` con `payload.seo: true` y `payload.phase` en `parse` | `volume` | `serp` | `format` (mismos `step_key` `retrieve` / `generate` que el chat documental).
 
 ## Frontend
 
 - Ajustes: sección DataForSEO en `settings-page-client.tsx`
-- Chat SEO: `/seo` → `SeoPageClient` + `workyai-seo-runtime.ts`
+- Chat SEO: `/seo` → `SeoPageClient` + `SeoThread` + panel acordeón de subagentes (`seo-subagents-panel.tsx`, `seo-steps-context.tsx`)
 - Enlaces: Panel, Documentos, Ajustes → `/seo`
 
 ## Verificación manual

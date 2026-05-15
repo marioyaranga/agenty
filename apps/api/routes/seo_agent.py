@@ -8,7 +8,7 @@ from typing import Any
 
 from flask import Blueprint, current_app, jsonify, request
 
-from agent.persistence import finalize_agent_run, insert_agent_run
+from agent.persistence import finalize_agent_run, insert_agent_run, list_agent_steps_for_run
 from agent.tracing import (
     finish_langsmith_root,
     langsmith_api_key_configured,
@@ -21,6 +21,7 @@ from gemini_keys import get_gemini_api_key_for_tenant
 from notifications import notify_agent_chat_outcome
 from postgrest_utils import first_dict_from_execute
 from seo.seo_graph import build_seo_graph
+from seo.seo_steps import format_seo_steps_for_ui
 from seo.seo_keys import dataforseo_configured, get_dataforseo_secrets_for_tenant, get_effective_seo_defaults
 from tenant_http import (
     admin_supabase_client,
@@ -193,6 +194,8 @@ def seo_chat(tenant_id: str):
             )
 
             answer = str(final.get("answer") or "")
+            step_rows = list_agent_steps_for_run(client, run_id)
+            steps = format_seo_steps_for_ui(step_rows)
 
             finalize_agent_run(
                 client,
@@ -239,6 +242,7 @@ def seo_chat(tenant_id: str):
                     "thread_id": thread_id,
                     "answer": answer,
                     "citations": [],
+                    "steps": steps,
                     "langsmith_trace_id": trace_id,
                     "langsmith_enabled": langsmith_api_key_configured(),
                 }

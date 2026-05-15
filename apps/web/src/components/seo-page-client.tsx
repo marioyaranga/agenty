@@ -3,7 +3,8 @@
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { useWorkspace } from "@/lib/contexts/workspace-context";
 import { useWorkyAiSeoRuntime } from "@/lib/assistant-ui/workyai-seo-runtime";
-import { Thread } from "@/components/assistant-ui/thread";
+import { SeoThread } from "@/components/seo/seo-thread";
+import { SeoStepsProvider, useSeoSteps } from "@/lib/contexts/seo-steps-context";
 import type { TenantOption } from "@/lib/types/tenant";
 
 export function SeoPageClient({ tenants: _tenants }: { tenants: TenantOption[] }) {
@@ -19,11 +20,20 @@ export function SeoPageClient({ tenants: _tenants }: { tenants: TenantOption[] }
     );
   }
 
-  return <SeoInner tenantId={activeTenantId} />;
+  return (
+    <SeoStepsProvider>
+      <SeoInner tenantId={activeTenantId} />
+    </SeoStepsProvider>
+  );
 }
 
 function SeoInner({ tenantId }: { tenantId: string }) {
-  const { runtime } = useWorkyAiSeoRuntime(tenantId);
+  const { onRunStart, onRunComplete, onRunEnd } = useSeoSteps();
+  const { runtime } = useWorkyAiSeoRuntime(tenantId, {
+    onRunStart,
+    onRunComplete,
+    onRunEnd,
+  });
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
@@ -31,12 +41,12 @@ function SeoInner({ tenantId }: { tenantId: string }) {
         <header className="shrink-0 border-b border-border px-4 py-3">
           <h1 className="text-sm font-medium text-foreground">SEO</h1>
           <p className="text-xs text-muted-foreground">
-            Volumen de búsqueda y SERP (DataForSEO). Escribí en texto libre, por
-            ejemplo: «volumen de marketing digital» o «SERP de agencia seo».
+            Volumen de búsqueda y SERP (DataForSEO). Cada consulta muestra los
+            subagentes (orquestador, volumen, SERP y respuesta).
           </p>
         </header>
         <div className="min-h-0 flex-1">
-          <Thread className="h-full" />
+          <SeoThread className="h-full" />
         </div>
       </div>
     </AssistantRuntimeProvider>
