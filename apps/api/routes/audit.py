@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import base64
-import json
 from typing import Any
 
 from flask import Blueprint, jsonify, request
 
+from cursor import decode_cursor, encode_cursor
 from tenant_http import (
     admin_supabase_client,
     membership_role,
@@ -18,30 +17,6 @@ from tenant_http import (
 )
 
 bp = Blueprint("audit", __name__, url_prefix="/v1")
-
-
-def _decode_cursor(raw: str) -> tuple[str | None, str | None]:
-    s = (raw or "").strip()
-    if not s:
-        return None, None
-    try:
-        pad = "=" * (-len(s) % 4)
-        blob = base64.urlsafe_b64decode(s + pad)
-        obj = json.loads(blob.decode("utf-8"))
-        if not isinstance(obj, dict):
-            return None, None
-        c = obj.get("c")
-        i = obj.get("i")
-        if c is None or i is None:
-            return None, None
-        return str(c), str(i)
-    except Exception:  # noqa: BLE001
-        return None, None
-
-
-def _encode_cursor(row: dict[str, Any]) -> str:
-    payload = json.dumps({"c": row.get("created_at"), "i": row.get("id")}, separators=(",", ":"))
-    return base64.urlsafe_b64encode(payload.encode("utf-8")).decode("utf-8").rstrip("=")
 
 
 @bp.get("/tenants/<tenant_id>/audit")
@@ -73,7 +48,7 @@ def list_audit(tenant_id: str):
     limit = max(1, min(limit, 100))
 
     cursor_raw = request.args.get("cursor", "") or ""
-    c_ts, c_id = _decode_cursor(cursor_raw)
+    c_ts, c_id = decode_cursor(cursor_raw)
     if cursor_raw and (c_ts is None or c_id is None):
         return jsonify({"error": "cursor inválido"}), 400
 
@@ -96,7 +71,7 @@ def list_audit(tenant_id: str):
 
     next_cursor: str | None = None
     if has_more and rows:
-        next_cursor = _encode_cursor(rows[-1])
+        next_cursor = encode_cursor(rows[-1])
 
     return (
         jsonify(

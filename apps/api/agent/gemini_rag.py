@@ -6,16 +6,15 @@ from typing import Any
 
 from google import genai
 
+from agent_chat_models import DEFAULT_AGENT_CHAT_MODEL
 from gemini_keys import resolve_gemini_api_key
-
-# Modelo de chat equilibrado (calidad/latencia/costo); documentado en runbook Fase 5.
-CHAT_MODEL = "gemini-2.0-flash"
 
 
 def rewrite_query_for_retrieval(
     user_message: str,
     *,
     api_key: str | None = None,
+    model: str | None = None,
 ) -> str:
     """Reescribe la pregunta en una consulta corta orientada a búsqueda semántica (español)."""
     base = (user_message or "").strip()
@@ -27,9 +26,10 @@ def rewrite_query_for_retrieval(
         "caracteres, español).\n\n"
         f"Pregunta:\n{base[:4000]}"
     )
+    mid = (model or "").strip() or DEFAULT_AGENT_CHAT_MODEL
     key = resolve_gemini_api_key(api_key=api_key)
     genai_client = genai.Client(api_key=key)
-    resp = genai_client.models.generate_content(model=CHAT_MODEL, contents=prompt)
+    resp = genai_client.models.generate_content(model=mid, contents=prompt)
     text = (resp.text or "").strip() if hasattr(resp, "text") else ""
     text = " ".join(text.split())
     if not text:
@@ -70,6 +70,7 @@ def answer_with_gemini(
     matches: list[dict[str, Any]],
     *,
     api_key: str | None = None,
+    model: str | None = None,
 ) -> tuple[str, list[dict[str, Any]]]:
     """Devuelve (texto_respuesta, citas alineadas a los chunks usados en el prompt)."""
     cites = citations_from_matches(matches)
@@ -89,9 +90,10 @@ def answer_with_gemini(
         f"Pregunta del usuario:\n{user_message.strip()}"
     )
 
+    mid = (model or "").strip() or DEFAULT_AGENT_CHAT_MODEL
     key = resolve_gemini_api_key(api_key=api_key)
     genai_client = genai.Client(api_key=key)
-    resp = genai_client.models.generate_content(model=CHAT_MODEL, contents=prompt)
+    resp = genai_client.models.generate_content(model=mid, contents=prompt)
     text = (resp.text or "").strip() if hasattr(resp, "text") else ""
     if not text:
         text = "No se pudo obtener texto del modelo."

@@ -14,6 +14,7 @@ def insert_agent_run(
     tenant_id: str,
     user_id: str,
     input_message: str,
+    thread_id: str | None = None,
 ) -> None:
     row: dict[str, Any] = {
         "id": run_id,
@@ -22,6 +23,8 @@ def insert_agent_run(
         "status": "running",
         "input_message": input_message[:12000],
     }
+    if thread_id is not None:
+        row["thread_id"] = thread_id
     client.table("agent_runs").insert(row).execute()
 
 
@@ -52,6 +55,7 @@ def finalize_agent_run(
     output_message: str | None = None,
     error: str | None = None,
     langsmith_trace_id: str | None = None,
+    citations: list[Any] | None = None,
 ) -> None:
     fields: dict[str, Any] = {"status": status}
     if output_message is not None:
@@ -60,4 +64,9 @@ def finalize_agent_run(
         fields["error"] = error[:8000]
     if langsmith_trace_id:
         fields["langsmith_trace_id"] = langsmith_trace_id[:256]
+    if citations is not None:
+        fields["citations"] = [
+            c if isinstance(c, dict) else (c.model_dump() if hasattr(c, "model_dump") else vars(c))
+            for c in citations
+        ]
     client.table("agent_runs").update(fields).eq("id", run_id).execute()

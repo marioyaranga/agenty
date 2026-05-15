@@ -9,9 +9,10 @@ import { Input } from "@/components/ui/input";
 import {
   deleteTenantGeminiApiKey,
   getTenantAiSettings,
+  patchTenantAgentChatModel,
   putTenantGeminiApiKey,
+  type TenantAiSettings,
 } from "@/lib/api/tenant-ai-settings";
-import { createClient } from "@/lib/supabase/client";
 import type { TenantOption } from "@/lib/types/tenant";
 
 const STORAGE_KEY = "workyai_active_tenant_id";
@@ -21,9 +22,15 @@ export function SettingsPageClient({ tenants }: { tenants: TenantOption[] }) {
   const [activeTenantId, setActiveTenantId] = useState("");
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState("");
+  const [chatCatalog, setChatCatalog] = useState<TenantAiSettings["agent_chat_models"]>(
+    [],
+  );
+  const [effectiveChatModel, setEffectiveChatModel] = useState("");
+  const [chatModelDraft, setChatModelDraft] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savingModel, setSavingModel] = useState(false);
 
   const activeRole = useMemo(() => {
     const t = tenants.find((x) => x.tenantId === activeTenantId);
@@ -50,8 +57,14 @@ export function SettingsPageClient({ tenants }: { tenants: TenantOption[] }) {
     window.localStorage.setItem(STORAGE_KEY, id);
   }, []);
 
+  const applyAiSettings = useCallback((data: TenantAiSettings) => {
+    setConfigured(data.gemini_configured);
+    setChatCatalog(data.agent_chat_models);
+    setEffectiveChatModel(data.agent_chat_model);
+    setChatModelDraft(data.agent_chat_model_stored ?? "");
+  }, []);
+
   const loadSettings = useCallback(async () => {
-    setMessage(null);
     setConfigured(null);
     if (!activeTenantId) {
       return;
@@ -78,13 +91,13 @@ export function SettingsPageClient({ tenants }: { tenants: TenantOption[] }) {
         sessionData.session.access_token,
         activeTenantId,
       );
-      setConfigured(data.gemini_configured);
+      applyAiSettings(data);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Error al cargar");
     } finally {
       setLoading(false);
     }
-  }, [activeTenantId]);
+  }, [activeTenantId, applyAiSettings]);
 
   useEffect(() => {
     void loadSettings();
@@ -118,14 +131,14 @@ export function SettingsPageClient({ tenants }: { tenants: TenantOption[] }) {
     }
     setSaving(true);
     try {
-      await putTenantGeminiApiKey(
+      const data = await putTenantGeminiApiKey(
         apiBase,
         sessionData.session.access_token,
         activeTenantId,
         trimmed,
       );
       setApiKeyInput("");
-      setConfigured(true);
+      applyAiSettings(data);
       setMessage("Clave guardada correctamente.");
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Error al guardar");
@@ -162,12 +175,56 @@ export function SettingsPageClient({ tenants }: { tenants: TenantOption[] }) {
         sessionData.session.access_token,
         activeTenantId,
       );
-      setConfigured(false);
+      const data = await getTenantAiSettings(
+        apiBase,
+        sessionData.session.access_token,
+        activeTenantId,
+      );
+      applyAiSettings(data);
       setMessage("Clave por tenant eliminada. Se usará la clave global del servidor si existe.");
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Error al quitar");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveChatModel() {
+    setMessage(null);
+    if (!canEdit) {
+      setMessage("Solo owner o admin pueden guardar el modelo.");
+      return;
+    }
+    const apiBase = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "");
+    if (!apiBase || !activeTenantId) {
+      setMessage("Configuración incompleta (API o espacio).");
+      return;
+    }
+    const supabase = createClient();
+    const { data: sessionData, error: sessionError } =
+      await supabase.auth.getSession();
+    if (sessionError || !sessionData.session?.access_token) {
+      setMessage(
+        sessionError?.message ??
+          "No hay sesión con access_token. Iniciá sesión de nuevo.",
+      );
+      return;
+    }
+    setSavingModel(true);
+    try {
+      const nextStored = chatModelDraft === "" ? null : chatModelDraft;
+      const data = await patchTenantAgentChatModel(
+        apiBase,
+        sessionData.session.access_token,
+        activeTenantId,
+        nextStored,
+      );
+      applyAiSettings(data);
+      setMessage("Modelo de chat actualizado.");
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Error al guardar modelo");
+    } finally {
+      setSavingModel(false);
     }
   }
 
@@ -240,12 +297,71 @@ export function SettingsPageClient({ tenants }: { tenants: TenantOption[] }) {
             </div>
           </>
         ) : null}
-        {message ? (
-          <p className="text-sm text-muted-foreground" role="status">
-            {message}
+      </section>
+
+      <section className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">
+        <h2 className="text-sm font-medium text-foreground">Modelo del agente (chat)</h2>
+        <p className="text-sm text-muted-foreground">
+          Afecta la reescritura de consulta y la respuesta con contexto RAG. Los embeddings de
+          documentos siguen usando el modelo de embedding del servidor.
+        </p>
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Cargando…</p>
+        ) : effectiveChatModel ? (
+          <p className="text-sm text-foreground">
+            En uso ahora:{" "}
+            <span className="font-medium">{effectiveChatModel}</span>
+            {chatModelDraft === "" ? (
+              <span className="text-muted-foreground"> (predeterminado del servidor)</span>
+            ) : null}
           </p>
         ) : null}
+        {tenants.length > 0 && !canEdit ? (
+          <p className="text-sm text-muted-foreground" role="status">
+            Tu rol en este espacio no permite cambiar el modelo. Contactá a un owner o admin.
+          </p>
+        ) : tenants.length > 0 && canEdit && chatCatalog.length > 0 ? (
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+              <span className="text-xs font-medium text-muted-foreground">Modelo</span>
+              <select
+                className={cn(
+                  "h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm transition-colors outline-none",
+                  "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+                  "disabled:cursor-not-allowed disabled:opacity-50",
+                  "dark:bg-input/30",
+                )}
+                disabled={savingModel || !activeTenantId}
+                value={chatModelDraft === "" ? "" : chatModelDraft}
+                onChange={(e) =>
+                  setChatModelDraft(e.target.value === "" ? "" : e.target.value)
+                }
+              >
+                <option value="">Predeterminado del servidor</option>
+                {chatCatalog.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              disabled={savingModel || !activeTenantId}
+              onClick={() => void saveChatModel()}
+            >
+              {savingModel ? "Guardando…" : "Guardar modelo"}
+            </Button>
+          </div>
+        ) : null}
       </section>
+
+      {message ? (
+        <p className="text-sm text-muted-foreground" role="status">
+          {message}
+        </p>
+      ) : null}
 
       <p className="text-sm text-muted-foreground">
         <Link

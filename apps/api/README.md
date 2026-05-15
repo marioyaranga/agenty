@@ -12,6 +12,7 @@ Servicio con `GET /health`, CORS restringido a `WEB_ORIGIN`, **Fase 2:** `GET /v
 | `JWT_AUDIENCE` | Opcional; por defecto `authenticated` (claim `aud` del usuario). |
 | `MAX_UPLOAD_BYTES` | Opcional; tamaño máximo de archivo en bytes (por defecto `5242880`). También limita el cuerpo multipart vía `MAX_CONTENT_LENGTH` en la app. |
 | `GEMINI_API_KEY` | Embeddings y chat del agente: clave global si el tenant no tiene clave propia (`gemini_keys.py`). |
+| `AGENT_DEFAULT_CHAT_MODEL` | Opcional. Si el tenant no fija `agent_chat_model`, el chat usa este ID (debe estar en la lista permitida de `agent_chat_models.py`; por defecto `gemini-2.0-flash`). |
 | `TENANT_SECRETS_FERNET_KEY` | Clave Fernet (base64) para cifrar/descifrar `tenant_ai_settings.gemini_api_key_encrypted`. Obligatoria para **PUT** de `/settings/ai`. |
 | `LANGCHAIN_API_KEY` o `LANGSMITH_API_KEY` | Opcional. Si falta, el chat funciona sin LangSmith. |
 | `LANGCHAIN_PROJECT` o `LANGSMITH_PROJECT` | Opcional; proyecto LangSmith. |
@@ -30,9 +31,10 @@ Servicio con `GET /health`, CORS restringido a `WEB_ORIGIN`, **Fase 2:** `GET /v
 - `POST /v1/tenants/<tenant_id>/rag/query` → cuerpo JSON con `query` (y opcionalmente `match_count`, `min_similarity`); cualquier miembro del tenant.
 - `POST /v1/tenants/<tenant_id>/agent/chat` → JSON `{ "message": "..." }`; mismas cabeceras que documentos/RAG; cualquier miembro. Respuesta: `run_id`, `answer`, `citations`, `langsmith_trace_id` (opcional), `langsmith_enabled`.
 - `GET /v1/tenants/<tenant_id>/audit` → Query `limit` (1–100, default 50) y `cursor` (opaco, siguiente página). **owner** o **admin**; mismas cabeceras. Respuesta: `items`, `next_cursor`.
-- `GET /v1/tenants/<tenant_id>/settings/ai` → `{ "gemini_configured": true|false }`; cualquier miembro del tenant.
+- `GET /v1/tenants/<tenant_id>/settings/ai` → `gemini_configured`, `agent_chat_model` (efectivo), `agent_chat_model_stored` (null = predeterminado), `agent_chat_models` (catálogo); cualquier miembro del tenant.
+- `PATCH /v1/tenants/<tenant_id>/settings/ai` → JSON `{ "agent_chat_model": "<id>" | null }`; **owner** o **admin**; `null` restaura el predeterminado del servidor.
 - `PUT /v1/tenants/<tenant_id>/settings/ai` → JSON `{ "gemini_api_key": "..." }`; **owner** o **admin**; cifrado Fernet en base.
-- `DELETE /v1/tenants/<tenant_id>/settings/ai` → quita la clave por tenant (vuelve al fallback `GEMINI_API_KEY`); **owner** o **admin**.
+- `DELETE /v1/tenants/<tenant_id>/settings/ai` → borra solo la clave cifrada del tenant (vuelve al fallback `GEMINI_API_KEY`); **owner** o **admin**; no elimina la fila ni el modelo elegido.
 
 ## Local (opcional)
 

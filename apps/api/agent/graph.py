@@ -68,6 +68,7 @@ def build_agent_graph(
     run_id: str,
     *,
     gemini_api_key: str,
+    chat_model: str,
     langsmith_parent: Any | None = None,
 ) -> Any:
     """Compila el grafo con routing condicional y hasta dos recuperaciones semánticas."""
@@ -146,7 +147,11 @@ def build_agent_graph(
             inputs={"message_preview": str(state.get("message") or "")[:500]},
         ) as (_, holder):
             raw_msg = str(state.get("message") or "")
-            new_q = rewrite_query_for_retrieval(raw_msg, api_key=gemini_api_key).strip()
+            new_q = rewrite_query_for_retrieval(
+                raw_msg,
+                api_key=gemini_api_key,
+                model=chat_model,
+            ).strip()
             if not new_q:
                 new_q = raw_msg.strip() or raw_msg
             insert_agent_step(
@@ -197,6 +202,7 @@ def build_agent_graph(
                 str(state.get("message") or ""),
                 list(state.get("matches") or []),
                 api_key=gemini_api_key,
+                model=chat_model,
             )
             insert_agent_step(
                 client,
@@ -204,7 +210,7 @@ def build_agent_graph(
                 step_key="generate",
                 step_index=_next_step_index(),
                 payload={
-                    "model": "gemini-2.0-flash",
+                    "model": chat_model,
                     "citations_count": len(cites),
                 },
             )
