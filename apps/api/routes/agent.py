@@ -1,6 +1,9 @@
 """Endpoints de agente de chat y threads de conversación (JWT + X-Tenant-Id + membresía).
 
 Fase 9: threads persistentes + citations en agent_runs.
+
+Las consultas insert/update + ``select`` usan ``first_dict_from_execute`` porque
+postgrest-py reciente ya no expone ``.single()`` en ese encadenamiento.
 """
 
 from __future__ import annotations
@@ -23,6 +26,7 @@ from audit_log import record_audit
 from cursor import decode_cursor, encode_cursor
 from gemini_keys import get_gemini_api_key_for_tenant
 from notifications import notify_agent_chat_outcome
+from postgrest_utils import first_dict_from_execute
 from tenant_http import (
     admin_supabase_client,
     membership_role,
@@ -67,10 +71,9 @@ def _fetch_thread(client: Any, thread_id: str, tenant_id: str) -> dict[str, Any]
         .select("*")
         .eq("id", thread_id)
         .eq("tenant_id", tenant_id)
-        .single()
         .execute()
     )
-    return res.data or None
+    return first_dict_from_execute(res)
 
 
 def _bump_thread_updated_at(client: Any, thread_id: str) -> None:
@@ -103,10 +106,9 @@ def _get_or_create_thread(
         client.table("agent_threads")
         .insert({"tenant_id": tenant_id, "user_id": user_id, "title": title})
         .select("id")
-        .single()
         .execute()
     )
-    new_id = (res.data or {}).get("id")
+    new_id = (first_dict_from_execute(res) or {}).get("id")
     if not new_id:
         return "", (jsonify({"error": "No se pudo crear el thread"}), 502)
     return new_id, None
@@ -131,13 +133,12 @@ def create_thread(tenant_id: str):
             client.table("agent_threads")
             .insert({"tenant_id": tenant_id, "user_id": user_id, "title": title})
             .select("id, title, created_at, updated_at")
-            .single()
             .execute()
         )
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": "No se pudo crear el thread", "detail": str(exc)}), 502
 
-    row = res.data or {}
+    row = first_dict_from_execute(res) or {}
     record_audit(
         client,
         tenant_id=tenant_id,
@@ -260,7 +261,6 @@ def rename_thread(tenant_id: str, thread_id: str):
             .update({"title": title})
             .eq("id", t_id)
             .select("id, title, created_at, updated_at")
-            .single()
             .execute()
         )
     except Exception as exc:  # noqa: BLE001
@@ -273,7 +273,7 @@ def rename_thread(tenant_id: str, thread_id: str):
         event_type="agent.thread.renamed",
         payload={"thread_id": t_id, "title": title},
     )
-    return jsonify(res.data or {}), 200
+    return jsonify(first_dict_from_execute(res) or {}), 200
 
 
 @bp.delete("/tenants/<tenant_id>/agent/threads/<thread_id>")

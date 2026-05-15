@@ -6,6 +6,8 @@ Fase 3: metadatos en `public.documents` (RLS en cliente) y bytes en Storage buck
 Fase 4: indexación RAG síncrona (Markdown) + reindex + consulta semántica (`rag/query` vía `rag.match_chunks`).
 Fase 6: embeddings y RAG resuelven clave Gemini por tenant (`gemini_keys`) cuando corresponde.
 Fase 8: tras indexación Markdown (alta o reindex), notificación in-app al `created_by` (ready/failed).
+
+Persistencia de filas tras update+select: ver ``postgrest_utils.first_dict_from_execute`` (postgrest-py reciente).
 """
 
 from __future__ import annotations
@@ -22,6 +24,7 @@ from werkzeug.utils import secure_filename
 
 from audit_log import record_audit
 from notifications import notify_document_index_outcome
+from postgrest_utils import first_dict_from_execute
 from rag.index_document import (
     is_real_markdown,
     sync_index_markdown_document,
@@ -181,11 +184,11 @@ def upload_document(tenant_id: str):
                     "id, tenant_id, created_by, title, storage_path, mime_type, "
                     "size_bytes, index_status, index_error, created_at, updated_at"
                 )
-                .single()
                 .execute()
             )
-            if up.data:
-                final_row = dict(up.data)
+            row = first_dict_from_execute(up)
+            if row:
+                final_row = row
         except Exception:  # noqa: BLE001
             final_row["index_status"] = status
             final_row["index_error"] = err_s
@@ -403,10 +406,9 @@ def reindex_document(tenant_id: str, document_id: str):
                 "id, tenant_id, created_by, title, storage_path, mime_type, "
                 "size_bytes, index_status, index_error, created_at, updated_at"
             )
-            .single()
             .execute()
         )
-        payload = dict(up.data) if up.data else None
+        payload = first_dict_from_execute(up)
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": "Fallo al persistir estado de indexación", "detail": str(exc)}), 502
 
