@@ -1,4 +1,8 @@
-"""Validación de JWT emitidos por Supabase Auth (JWKS, iss, aud, exp, role)."""
+"""Validación de JWT emitidos por Supabase Auth (JWKS, iss, aud, exp, role).
+
+Proyectos recientes pueden firmar con ES256 (JWKS con kty EC); otros usan RS256.
+Ambos deben figurar en `algorithms` de `jwt.decode` para que la verificación coincida con el header del token.
+"""
 
 from __future__ import annotations
 
@@ -31,7 +35,7 @@ def verify_supabase_jwt(token: str) -> dict[str, Any]:
     payload = jwt.decode(
         token,
         signing_key.key,
-        algorithms=["RS256"],
+        algorithms=["RS256", "ES256"],
         audience=audience(),
         issuer=issuer(),
         options={"require": ["exp", "sub", "iss", "aud"]},
