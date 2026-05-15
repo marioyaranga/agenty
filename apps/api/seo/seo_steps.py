@@ -5,6 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 PHASE_LABELS: dict[str, tuple[str, str]] = {
+    "dataforseo": (
+        "DataForSEO",
+        "Consultas a volumen y/o SERP según el modo.",
+    ),
     "parse": (
         "Orquestador",
         "Interpreta el mensaje y extrae modo (volumen / SERP) y keywords.",
@@ -28,6 +32,8 @@ def _phase_from_payload(payload: dict[str, Any], step_key: str) -> str:
     if step_key == "generate":
         return "format"
     phase = str(payload.get("phase") or "").strip().lower()
+    if phase == "dataforseo":
+        return "dataforseo"
     if phase in PHASE_LABELS:
         return phase
     # Compat: pasos SEO antiguos sin `phase` en retrieve
@@ -76,6 +82,33 @@ def format_seo_steps_for_ui(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             payload = {}
         step_key = str(row.get("step_key") or "")
         phase = _phase_from_payload(payload, step_key)
+        if phase == "dataforseo":
+            mode = str(payload.get("mode") or "volume")
+            sub_phases: list[str] = []
+            if mode in ("volume", "both") and (
+                payload.get("volume_summary") or payload.get("volume_row_count")
+            ):
+                sub_phases.append("volume")
+            if mode in ("serp", "both") and (
+                payload.get("serp_summary") or payload.get("serp_block_count")
+            ):
+                sub_phases.append("serp")
+            for sub in sub_phases:
+                if sub in seen_phases:
+                    continue
+                seen_phases.add(sub)
+                label, description = PHASE_LABELS[sub]
+                out.append(
+                    {
+                        "id": sub,
+                        "label": label,
+                        "description": description,
+                        "status": "completed",
+                        "detail": _detail_for_phase(sub, payload),
+                        "step_index": int(row.get("step_index") or 0),
+                    }
+                )
+            continue
         if phase in seen_phases:
             continue
         seen_phases.add(phase)

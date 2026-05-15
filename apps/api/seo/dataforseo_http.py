@@ -17,7 +17,7 @@ def dataforseo_post(
     path: str,
     payload: list[dict[str, Any]],
     *,
-    timeout: float = 120.0,
+    timeout: float = 90.0,
 ) -> dict[str, Any]:
     """POST JSON; devuelve el cuerpo parseado o lanza con mensaje legible."""
     url = f"{DATAFORSEO_BASE}{path}"

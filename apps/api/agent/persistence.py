@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import json
+import logging
 from typing import Any
 
 from supabase import Client
+
+logger = logging.getLogger(__name__)
 
 
 def insert_agent_run(
@@ -28,6 +32,15 @@ def insert_agent_run(
     client.table("agent_runs").insert(row).execute()
 
 
+def _compact_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Evita payloads enormes en `agent_steps.payload` (límite práctico PostgREST)."""
+    try:
+        raw = json.dumps(payload, default=str)[:12000]
+        return json.loads(raw)
+    except Exception:  # noqa: BLE001
+        return {"_truncated": True}
+
+
 def insert_agent_step(
     client: Client,
     *,
@@ -42,9 +55,35 @@ def insert_agent_step(
             "run_id": run_id,
             "step_key": step_key,
             "step_index": step_index,
-            "payload": payload,
+            "payload": _compact_payload(payload),
         }
     ).execute()
+
+
+def safe_insert_agent_step(
+    client: Client,
+    *,
+    run_id: str,
+    step_key: str,
+    step_index: int,
+    payload: dict[str, Any],
+) -> None:
+    """Inserta un paso sin tumbar el chat si PostgREST falla o va lento."""
+    try:
+        insert_agent_step(
+            client,
+            run_id=run_id,
+            step_key=step_key,
+            step_index=step_index,
+            payload=payload,
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "safe_insert_agent_step falló (run_id=%s step_key=%s step_index=%s)",
+            run_id,
+            step_key,
+            step_index,
+        )
 
 
 def list_agent_steps_for_run(client: Client, run_id: str) -> list[dict[str, Any]]:

@@ -46,7 +46,9 @@ export function useWorkyAiSeoRuntime(
       );
 
       try {
-        const res = await fetch(
+        let res: Response;
+        try {
+          res = await fetch(
           `${apiBase}/v1/tenants/${tenantId}/agent/seo/chat`,
           {
             method: "POST",
@@ -62,13 +64,28 @@ export function useWorkyAiSeoRuntime(
             }),
           },
         );
+        } catch (fetchErr) {
+          const hint =
+            fetchErr instanceof TypeError &&
+            String(fetchErr.message).toLowerCase().includes("fetch")
+              ? " La API puede haber tardado demasiado (timeout del servidor). Reintentá en unos segundos."
+              : "";
+          throw new Error(
+            `${fetchErr instanceof Error ? fetchErr.message : "Error de red"}${hint}`,
+          );
+        }
 
         const body = await res.json().catch(() => null);
         if (!res.ok) {
-          const msg =
-            body && typeof body === "object" && "error" in body
-              ? String(body.error)
+          const errObj =
+            body && typeof body === "object" ? (body as Record<string, unknown>) : null;
+          const detail =
+            errObj && typeof errObj.detail === "string" ? errObj.detail : "";
+          const base =
+            errObj && typeof errObj.error === "string"
+              ? String(errObj.error)
               : `HTTP ${res.status}`;
+          const msg = detail ? `${base} (${detail})` : base;
           throw new Error(msg);
         }
 

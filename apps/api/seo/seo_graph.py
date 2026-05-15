@@ -10,7 +10,7 @@ from google import genai
 from langgraph.graph import END, START, StateGraph
 from supabase import Client
 
-from agent.persistence import insert_agent_step
+from agent.persistence import safe_insert_agent_step
 from agent.tracing import traced_graph_node
 from agent_chat_models import DEFAULT_AGENT_CHAT_MODEL
 from seo.dataforseo_serp import fetch_serp_google_organic_advanced
@@ -226,19 +226,6 @@ def build_seo_graph(
                 model=chat_model,
             )
             holder["outputs"] = {"mode": mode, "keyword_count": len(keywords)}
-        insert_agent_step(
-            client,
-            run_id=run_id,
-            step_key="retrieve",
-            step_index=_next_step_index(),
-            payload={
-                "seo": True,
-                "phase": "parse",
-                "mode": mode,
-                "keywords": keywords[:20],
-                "keyword_count": len(keywords),
-            },
-        )
         return {"mode": mode, "keywords": keywords}
 
     def run_volume_and_serp(state: SeoGraphState) -> dict[str, Any]:
@@ -266,25 +253,6 @@ def build_seo_graph(
                     location_code=loc,
                     language_code=lang,
                 )
-                insert_agent_step(
-                    client,
-                    run_id=run_id,
-                    step_key="retrieve",
-                    step_index=_next_step_index(),
-                    payload={
-                        "seo": True,
-                        "phase": "volume",
-                        "mode": mode,
-                        "row_count": len(volume_results),
-                        "volume_summary": [
-                            {
-                                "keyword": r.get("keyword"),
-                                "search_volume": r.get("search_volume"),
-                            }
-                            for r in volume_results
-                        ],
-                    },
-                )
             if mode in ("serp", "both") and keywords:
                 serp_kws = keywords[:MAX_SERP_KEYWORDS]
                 for kw in serp_kws:
@@ -298,29 +266,50 @@ def build_seo_graph(
                             depth=depth,
                         )
                     )
-                insert_agent_step(
-                    client,
-                    run_id=run_id,
-                    step_key="retrieve",
-                    step_index=_next_step_index(),
-                    payload={
-                        "seo": True,
-                        "phase": "serp",
-                        "mode": mode,
-                        "block_count": len(serp_results),
-                        "serp_summary": [
-                            {
-                                "keyword": s.get("keyword"),
-                                "top": (s.get("organic_results") or [])[:5],
-                            }
-                            for s in serp_results
-                        ],
-                    },
-                )
             holder["outputs"] = {
                 "volume_rows": len(volume_results),
                 "serp_blocks": len(serp_results),
             }
+
+        safe_insert_agent_step(
+            client,
+            run_id=run_id,
+            step_key="retrieve",
+            step_index=_next_step_index(),
+            payload={
+                "seo": True,
+                "phase": "dataforseo",
+                "mode": mode,
+                "keywords": keywords[:20],
+                "keyword_count": len(keywords),
+                "location_code": loc,
+                "language_code": lang,
+                "serp_depth": depth,
+                "volume_row_count": len(volume_results),
+                "volume_summary": [
+                    {
+                        "keyword": r.get("keyword"),
+                        "search_volume": r.get("search_volume"),
+                    }
+                    for r in volume_results[:50]
+                ],
+                "serp_block_count": len(serp_results),
+                "serp_summary": [
+                    {
+                        "keyword": s.get("keyword"),
+                        "top": [
+                            {
+                                "position": t.get("position"),
+                                "title": (t.get("title") or "")[:120],
+                                "url": (t.get("url") or "")[:200],
+                            }
+                            for t in (s.get("organic_results") or [])[:3]
+                        ],
+                    }
+                    for s in serp_results[:10]
+                ],
+            },
+        )
 
         return {"volume_results": volume_results, "serp_results": serp_results}
 
@@ -335,7 +324,7 @@ def build_seo_graph(
             volume_results=list(state.get("volume_results") or []),
             serp_results=list(state.get("serp_results") or []),
         )
-        insert_agent_step(
+        safe_insert_agent_step(
             client,
             run_id=run_id,
             step_key="generate",

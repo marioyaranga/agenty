@@ -61,8 +61,10 @@ flask --app app run
 **Start command** (según [documentación Render para Flask](https://render.com/docs/deploy-flask)):
 
 ```bash
-gunicorn app:app --bind 0.0.0.0:$PORT
+gunicorn app:app --bind 0.0.0.0:$PORT --timeout 180 --graceful-timeout 30
 ```
+
+El chat SEO (Gemini + DataForSEO) puede tardar más de 30s; sin `--timeout 180` Gunicorn corta el worker y el cliente ve error de red/CORS.
 
 **Build:** `pip install -r requirements.txt`
 

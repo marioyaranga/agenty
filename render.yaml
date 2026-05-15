@@ -7,7 +7,8 @@ services:
     plan: free
     rootDir: apps/api
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    # SEO chat: Gemini + DataForSEO pueden superar 30s; el default de gunicorn corta el worker.
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 180 --graceful-timeout 30
     healthCheckPath: /health
     envVars:
       - key: WEB_ORIGIN
