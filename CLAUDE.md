@@ -2,7 +2,7 @@
 
 Este archivo da contexto a Claude Code (claude.ai/code) cuando trabaja en este repositorio.
 
-## Flujo de trabajo (de `.cursor/rules/deploy-y-pruebas.mdc`)
+## Flujo de trabajo (espejado en `.cursor/rules/deploy-y-pruebas.mdc` para el IDE)
 
 **No hay entorno local de uso habitual** ni staging. El producto se prueba solo contra el stack desplegado:
 
@@ -10,7 +10,12 @@ Este archivo da contexto a Claude Code (claude.ai/code) cuando trabaja en este r
 - API (Render): servicio `workyai-api`, blueprint en `render.yaml`
 - DB / Auth / Storage / Realtime: Supabase
 
-Al terminar un cambio, hacé push a `main` para que el entorno desplegado lo levante, y verificá con las CLIs y logs de Vercel / Render / Supabase. Mantené diffs chicos — no hay staging que absorba errores.
+Al **termininar** un cambio que toque web, API o datos:
+
+1. Integrá el trabajo en **`main`** (commit claro si hay cambios) y hacé **`git push origin main`** para que Vercel y Render desplieguen.
+2. **Verificá con las CLIs** (no solo la consola web): `vercel` (último deploy / proyecto de `apps/web`), `render` (servicio API, logs o estado), `supabase` (logs o advisors si aplica). Si una CLI no está logueada en el entorno, documentá el comando intentado y el error.
+
+Mantené diffs chicos — no hay staging que absorba errores.
 
 ## Estructura del repo
 
