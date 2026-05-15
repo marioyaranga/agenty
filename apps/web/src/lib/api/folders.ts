@@ -106,6 +106,19 @@ export async function moveFolder(
   return res.json() as Promise<FolderItem>;
 }
 
+export type BootstrapResult =
+  | { status: "seeded"; folder_id: string; documents: { id: string; title: string; mime_type: string }[] }
+  | { status: "already_seeded" };
+
+export async function bootstrapWorkspaceDefaults(tenantId: string): Promise<BootstrapResult> {
+  const res = await fetch(
+    `${apiBase()}/v1/tenants/${tenantId}/bootstrap-defaults`,
+    { method: "POST", headers: await getHeaders(tenantId) },
+  );
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as Promise<BootstrapResult>;
+}
+
 export async function deleteFolder(
   tenantId: string,
   folderId: string,

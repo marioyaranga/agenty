@@ -103,7 +103,7 @@ type CtxMenu = {
 // Panel principal
 // ---------------------------------------------------------------------------
 export function FileExplorerPanel() {
-  const { activeTenantId, setSelectedDocumentId } = useWorkspace();
+  const { activeTenantId, setSelectedDocumentId, bootstrapTick } = useWorkspace();
   const { openDocument } = useViewer();
   const [treeData, setTreeData] = useState<TreeNode[]>([]);
   const [loading, setLoading] = useState(false);
@@ -128,7 +128,7 @@ export function FileExplorerPanel() {
     } finally {
       setLoading(false);
     }
-  }, [activeTenantId]);
+  }, [activeTenantId, bootstrapTick]);
 
   useEffect(() => {
     void loadTree();
