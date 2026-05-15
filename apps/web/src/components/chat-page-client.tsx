@@ -11,6 +11,11 @@ import { Thread } from "@/components/assistant-ui/thread";
 import { ChatHeader } from "@/components/chat/chat-header";
 import type { TenantOption } from "@/lib/types/tenant";
 
+type HydratedThread = {
+  threadId: string | null;
+  messages: readonly ThreadMessageLike[];
+};
+
 function runsToMessages(runs: ThreadRun[]): ThreadMessageLike[] {
   const messages: ThreadMessageLike[] = [];
   for (const run of runs) {
@@ -52,51 +57,53 @@ export function ChatPageClient({ tenants }: { tenants: TenantOption[] }) {
 
 function ChatManager({ tenantId }: { tenantId: string }) {
   const { activeThreadId, setActiveThreadId, refresh } = useChatThreads();
-  const [initialMessages, setInitialMessages] = useState<readonly ThreadMessageLike[]>([]);
-  const [loadingThread, setLoadingThread] = useState(false);
+  // null = fetch en curso; objeto = listo para montar ChatInner con datos consistentes.
+  const [hydrated, setHydrated] = useState<HydratedThread | null>({
+    threadId: null,
+    messages: [],
+  });
 
-  // Cuando cambia el thread activo, cargar su historial para hidratar el runtime.
+  // Hidratar de forma atómica: no montar ChatInner hasta tener threadId + messages sincronizados.
   useEffect(() => {
     if (!activeThreadId) {
-      setInitialMessages([]);
+      setHydrated({ threadId: null, messages: [] });
       return;
     }
     let cancelled = false;
-    setLoadingThread(true);
+    setHydrated(null); // loading
     getThread(tenantId, activeThreadId)
       .then((detail) => {
-        if (!cancelled) setInitialMessages(runsToMessages(detail.runs));
+        if (!cancelled) setHydrated({ threadId: activeThreadId, messages: runsToMessages(detail.runs) });
       })
       .catch(() => {
-        if (!cancelled) setInitialMessages([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingThread(false);
+        if (!cancelled) setHydrated({ threadId: activeThreadId, messages: [] });
       });
     return () => { cancelled = true; };
   }, [activeThreadId, tenantId]);
 
   const handleNewChat = useCallback(() => {
     setActiveThreadId(null);
-    setInitialMessages([]);
   }, [setActiveThreadId]);
 
   const handleSelectThread = useCallback(
-    (threadId: string) => {
-      setActiveThreadId(threadId);
-    },
+    (threadId: string) => setActiveThreadId(threadId),
     [setActiveThreadId],
   );
 
-  // key fuerza re-mount de ChatInner (y del runtime) cuando cambia el thread,
-  // para que useLocalRuntime reciba los initialMessages correctos en su useState.
+  if (!hydrated) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <p className="text-sm text-muted-foreground">Cargando conversación…</p>
+      </div>
+    );
+  }
+
   return (
     <ChatInner
-      key={activeThreadId ?? "new"}
+      key={hydrated.threadId ?? "new"}
       tenantId={tenantId}
-      activeThreadId={activeThreadId}
-      initialMessages={initialMessages}
-      loadingThread={loadingThread}
+      activeThreadId={hydrated.threadId}
+      initialMessages={hydrated.messages}
       refresh={refresh}
       onNewChat={handleNewChat}
       onSelectThread={handleSelectThread}
@@ -108,7 +115,6 @@ function ChatInner({
   tenantId,
   activeThreadId,
   initialMessages,
-  loadingThread,
   refresh,
   onNewChat,
   onSelectThread,
@@ -116,7 +122,6 @@ function ChatInner({
   tenantId: string;
   activeThreadId: string | null;
   initialMessages: readonly ThreadMessageLike[];
-  loadingThread: boolean;
   refresh: () => void;
   onNewChat: () => void;
   onSelectThread: (threadId: string) => void;
@@ -135,7 +140,6 @@ function ChatInner({
         tenantId={tenantId}
         activeThreadId={activeThreadId}
         threadIdRef={threadIdRef}
-        loadingThread={loadingThread}
         refresh={refresh}
         onNewChat={onNewChat}
         onSelectThread={onSelectThread}
@@ -148,7 +152,6 @@ function ChatWithRuntime({
   tenantId,
   activeThreadId,
   threadIdRef,
-  loadingThread,
   refresh,
   onNewChat,
   onSelectThread,
@@ -156,7 +159,6 @@ function ChatWithRuntime({
   tenantId: string;
   activeThreadId: string | null;
   threadIdRef: React.MutableRefObject<string | null>;
-  loadingThread: boolean;
   refresh: () => void;
   onNewChat: () => void;
   onSelectThread: (threadId: string) => void;
@@ -179,12 +181,7 @@ function ChatWithRuntime({
         onSelectThread={onSelectThread}
         onNewChat={onNewChat}
       />
-      <div className="relative min-h-0 flex-1">
-        {loadingThread && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60">
-            <p className="text-sm text-muted-foreground">Cargando conversación…</p>
-          </div>
-        )}
+      <div className="min-h-0 flex-1">
         <Thread className="h-full" />
       </div>
     </div>
