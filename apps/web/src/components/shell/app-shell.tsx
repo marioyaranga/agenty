@@ -41,7 +41,9 @@ export function AppShell({
                 className="flex-1 overflow-hidden"
               >
                 <ResizablePanel id="center" minSize={20} defaultSize={35}>
-                  <div className="h-full overflow-y-auto">{children}</div>
+                  <div className="h-full min-w-0 overflow-y-auto overflow-x-hidden">
+                    {children}
+                  </div>
                 </ResizablePanel>
                 <ResizableHandle withHandle />
                 <ResizablePanel

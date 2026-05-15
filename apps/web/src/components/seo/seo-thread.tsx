@@ -17,9 +17,9 @@ import { SeoSubagentsPanel } from "@/components/seo/seo-subagents-panel";
 export function SeoThread({ className }: { className?: string }) {
   return (
     <ThreadPrimitive.Root
-      className={cn("relative flex h-full flex-col overflow-hidden", className)}
+      className={cn("relative flex h-full min-w-0 flex-col overflow-hidden", className)}
     >
-      <ThreadPrimitive.Viewport className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 py-6">
+      <ThreadPrimitive.Viewport className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden px-4 py-6">
         <ThreadPrimitive.Empty>
           <SeoWelcomeScreen />
         </ThreadPrimitive.Empty>
@@ -70,7 +70,7 @@ function SeoRunningSteps() {
   if (!isRunning || !activeSteps?.length) return null;
 
   return (
-    <div className="flex w-full justify-start gap-3 pl-10">
+    <div className="flex w-full min-w-0 justify-start gap-3 pl-10">
       <SeoSubagentsPanel steps={activeSteps} defaultOpen />
     </div>
   );
@@ -88,8 +88,8 @@ function useAssistantTurnIndex(): number {
 
 function SeoUserMessage() {
   return (
-    <MessagePrimitive.Root className="flex w-full justify-end">
-      <div className="max-w-[75%] rounded-2xl rounded-tr-sm bg-primary px-4 py-3 text-primary-foreground shadow-sm">
+    <MessagePrimitive.Root className="flex w-full min-w-0 justify-end">
+      <div className="max-w-[75%] min-w-0 rounded-2xl rounded-tr-sm bg-primary px-4 py-3 text-primary-foreground shadow-sm">
         <MessagePrimitive.Parts components={{ Text: SeoUserTextPart }} />
       </div>
     </MessagePrimitive.Root>
@@ -98,7 +98,7 @@ function SeoUserMessage() {
 
 function SeoUserTextPart() {
   return (
-    <p className="whitespace-pre-wrap text-sm leading-relaxed">
+    <p className="min-w-0 whitespace-pre-wrap break-words text-sm leading-relaxed [overflow-wrap:anywhere]">
       <MessagePartPrimitive.Text />
     </p>
   );
@@ -110,7 +110,7 @@ function SeoAssistantMessage() {
   const steps = getStepsForTurn(turnIndex);
 
   return (
-    <MessagePrimitive.Root className="flex w-full justify-start gap-3">
+    <MessagePrimitive.Root className="flex w-full min-w-0 justify-start gap-3">
       <div className="mt-1 flex size-7 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-foreground">
         AI
       </div>
@@ -119,7 +119,7 @@ function SeoAssistantMessage() {
         {steps && steps.length > 0 ? (
           <SeoSubagentsPanel steps={steps} defaultOpen={false} />
         ) : null}
-        <div className="rounded-2xl rounded-tl-sm border bg-card px-4 py-3 shadow-sm">
+        <div className="min-w-0 rounded-2xl rounded-tl-sm border bg-card px-4 py-3 shadow-sm">
           <MessagePrimitive.Parts
             components={{ Text: SeoAssistantMarkdownTextPart }}
           />
@@ -138,7 +138,7 @@ function SeoAssistantMarkdownTextPart() {
   return (
     <MarkdownTextPrimitive
       remarkPlugins={[remarkGfm]}
-      className="prose prose-sm dark:prose-invert max-w-none [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-muted [&_pre]:p-3 [&_code]:text-xs"
+      className="prose prose-sm dark:prose-invert max-w-none min-w-0 w-full [overflow-wrap:anywhere] [&_a]:break-all [&_li]:min-w-0 [&_p]:min-w-0 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-muted [&_pre]:p-3 [&_code]:text-xs [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto"
     />
   );
 }
@@ -146,7 +146,7 @@ function SeoAssistantMarkdownTextPart() {
 function SeoComposer() {
   return (
     <ComposerPrimitive.Root className="shrink-0 border-t bg-background px-4 py-3">
-      <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-2xl border bg-background px-4 py-2 shadow-sm focus-within:ring-1 focus-within:ring-ring">
+      <div className="mx-auto flex min-w-0 w-full max-w-3xl items-end gap-2 rounded-2xl border bg-background px-4 py-2 shadow-sm focus-within:ring-1 focus-within:ring-ring">
         <ComposerPrimitive.Input
           autoFocus
           placeholder="Ej.: volumen de marketing digital, SERP de agencia seo…"

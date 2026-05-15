@@ -52,9 +52,9 @@ async function fetchDocumentSuggestions(
 export function Thread({ className }: { className?: string }) {
   return (
     <ThreadPrimitive.Root
-      className={cn("relative flex h-full flex-col overflow-hidden", className)}
+      className={cn("relative flex h-full min-w-0 flex-col overflow-hidden", className)}
     >
-      <ThreadPrimitive.Viewport className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 py-6">
+      <ThreadPrimitive.Viewport className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden px-4 py-6">
         <ThreadPrimitive.Empty>
           <WelcomeScreen />
         </ThreadPrimitive.Empty>
@@ -95,7 +95,7 @@ function RunningStepsInline() {
   if (!steps?.isRunning || !steps.activeSteps?.length) return null;
 
   return (
-    <div className="flex w-full justify-start gap-3 pl-10">
+    <div className="flex w-full min-w-0 justify-start gap-3 pl-10">
       <SeoSubagentsPanel steps={steps.activeSteps} defaultOpen />
     </div>
   );
@@ -138,8 +138,8 @@ function WelcomeScreen() {
 
 function UserMessage() {
   return (
-    <MessagePrimitive.Root className="flex w-full justify-end">
-      <div className="max-w-[75%] rounded-2xl rounded-tr-sm bg-primary px-4 py-3 text-primary-foreground shadow-sm">
+    <MessagePrimitive.Root className="flex w-full min-w-0 justify-end">
+      <div className="max-w-[75%] min-w-0 rounded-2xl rounded-tr-sm bg-primary px-4 py-3 text-primary-foreground shadow-sm">
         <MessagePrimitive.Parts
           components={{ Text: UserTextPart }}
         />
@@ -199,7 +199,7 @@ function UserTextPart() {
   }, [text]);
 
   return (
-    <p className="whitespace-pre-wrap text-sm leading-relaxed">
+    <p className="min-w-0 whitespace-pre-wrap break-words text-sm leading-relaxed [overflow-wrap:anywhere]">
       {parts.map((part, i) =>
         part.type === "mention" ? (
           <button
@@ -229,7 +229,7 @@ function AssistantMessage() {
   const steps = stepsCtx?.getStepsForTurn(turnIndex);
 
   return (
-    <MessagePrimitive.Root className="flex w-full justify-start gap-3">
+    <MessagePrimitive.Root className="flex w-full min-w-0 justify-start gap-3">
       <div className="mt-1 flex size-7 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-foreground">
         AI
       </div>
@@ -238,7 +238,7 @@ function AssistantMessage() {
         {steps && steps.length > 0 ? (
           <SeoSubagentsPanel steps={steps} defaultOpen={false} />
         ) : null}
-        <div className="rounded-2xl rounded-tl-sm border bg-card px-4 py-3 shadow-sm">
+        <div className="min-w-0 rounded-2xl rounded-tl-sm border bg-card px-4 py-3 shadow-sm">
           <MessagePrimitive.Parts
             components={{ Text: AssistantMarkdownTextPart }}
           />
@@ -254,10 +254,11 @@ function AssistantMessage() {
 }
 
 function AssistantMarkdownTextPart() {
+  // URLs largas y “palabras” sin espacios: min-w-0 en el flex + overflow-wrap y break-all en <a>.
   return (
     <MarkdownTextPrimitive
       remarkPlugins={[remarkGfm]}
-      className="prose prose-sm dark:prose-invert max-w-none [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-muted [&_pre]:p-3 [&_code]:text-xs"
+      className="prose prose-sm dark:prose-invert max-w-none min-w-0 w-full [overflow-wrap:anywhere] [&_a]:break-all [&_li]:min-w-0 [&_p]:min-w-0 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-muted [&_pre]:p-3 [&_code]:text-xs [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto"
     />
   );
 }
@@ -346,7 +347,7 @@ function Composer() {
 
   return (
     <ComposerPrimitive.Root className="shrink-0 border-t bg-background px-4 py-3">
-      <div ref={containerRef} className="relative mx-auto max-w-3xl">
+      <div ref={containerRef} className="relative mx-auto max-w-3xl min-w-0 w-full">
 
         {/* Dropdown de sugerencias @mention */}
         {mentionState !== null && suggestions.length > 0 && (

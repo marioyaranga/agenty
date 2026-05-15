@@ -193,14 +193,14 @@ function ChatWithRuntime({
   onNewChat: () => void;
 }) {
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-w-0 flex-col">
       <ChatHeader
         key={activeThreadId ?? "new"}
         activeThreadId={activeThreadId}
         threadTitleHint={threadTitleHint}
         onNewChat={onNewChat}
       />
-      <div className="min-h-0 flex-1">
+      <div className="min-h-0 min-w-0 flex-1">
         <Thread className="h-full" />
       </div>
     </div>

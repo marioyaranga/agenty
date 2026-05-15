@@ -59,7 +59,9 @@ function SeoSubagentRow({ step }: { step: SeoSubagentStep }) {
         <p className="text-sm font-medium text-foreground">{step.label}</p>
         <p className="text-xs text-muted-foreground">{step.description}</p>
         {step.detail ? (
-          <p className="mt-1 text-xs text-foreground/80">{step.detail}</p>
+          <p className="mt-1 min-w-0 break-words text-xs text-foreground/80 [overflow-wrap:anywhere]">
+            {step.detail}
+          </p>
         ) : null}
       </div>
     </li>
