@@ -22,6 +22,7 @@ Aplicar la migración antes de usar los endpoints.
 - `TENANT_SECRETS_FERNET_KEY`: obligatoria para **PUT** `/settings/seo`.
 - **Sin fallback global** de DataForSEO: cada tenant debe guardar credenciales propias.
 - Gemini: sigue usando `tenant_ai_settings` / `GEMINI_API_KEY` solo para parsear el mensaje libre (modo + keywords).
+- Volumen: endpoint **Google Ads Search Volume live** (`/v3/keywords_data/google_ads/search_volume/live`); el parser lee cada keyword en `tasks[].result[]` (no en `result[].items[]`, que es el formato clickstream).
 - Guardrails v1:
   - Volumen: máx. **50** keywords por mensaje
   - SERP: máx. **10** keywords por mensaje

@@ -189,6 +189,17 @@ def _format_answer_markdown(
             "_SERP: snapshot del momento (Google Organic live/advanced); no es histórico._"
         )
 
+    if mode in ("volume", "both") and keywords and not volume_results:
+        lines.extend(
+            [
+                "## Volumen de búsqueda",
+                "",
+                "DataForSEO no devolvió datos para las keywords indicadas "
+                "(Google Ads a veces no reporta volumen para ciertas consultas o mercados).",
+                "",
+            ]
+        )
+
     if not volume_results and not serp_results:
         lines.append(
             "No se obtuvieron resultados. Revisá las keywords o la configuración DataForSEO."
