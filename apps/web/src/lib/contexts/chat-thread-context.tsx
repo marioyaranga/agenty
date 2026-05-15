@@ -1,5 +1,10 @@
 "use client";
 
+/**
+ * Hilos de chat por tenant: lista paginada, hilo activo, alta/baja y renombre.
+ * `renameThreadById` alimenta el diálogo del historial; `renameActiveThread` la cabecera del chat.
+ */
+
 import {
   createContext,
   useCallback,
@@ -28,6 +33,8 @@ type ChatThreadState = {
   refresh: () => Promise<void>;
   loadMore: () => Promise<void>;
   upsertThread: (item: ThreadItem) => void;
+  /** PATCH del título para cualquier hilo (p. ej. menú en el panel lateral). */
+  renameThreadById: (threadId: string, title: string) => Promise<void>;
   renameActiveThread: (title: string) => Promise<void>;
   removeThread: (id: string) => Promise<void>;
 };
@@ -91,15 +98,29 @@ export function ChatThreadProvider({ children }: { children: React.ReactNode }) 
     });
   }, []);
 
-  const renameActiveThread = useCallback(
-    async (title: string) => {
-      if (!activeTenantId || !activeThreadId) return;
-      const updated = await renameThread(activeTenantId, activeThreadId, title);
+  const renameThreadById = useCallback(
+    async (threadId: string, title: string) => {
+      if (!activeTenantId) return;
+      const trimmed = title.trim();
+      if (!trimmed) return;
+      const updated = await renameThread(
+        activeTenantId,
+        threadId,
+        trimmed.slice(0, 200),
+      );
       setThreads((prev) =>
-        prev.map((t) => (t.id === activeThreadId ? updated : t)),
+        prev.map((t) => (t.id === threadId ? updated : t)),
       );
     },
-    [activeTenantId, activeThreadId],
+    [activeTenantId],
+  );
+
+  const renameActiveThread = useCallback(
+    async (title: string) => {
+      if (!activeThreadId) return;
+      await renameThreadById(activeThreadId, title);
+    },
+    [activeThreadId, renameThreadById],
   );
 
   const removeThread = useCallback(
@@ -124,6 +145,7 @@ export function ChatThreadProvider({ children }: { children: React.ReactNode }) 
         refresh,
         loadMore,
         upsertThread,
+        renameThreadById,
         renameActiveThread,
         removeThread,
       }}

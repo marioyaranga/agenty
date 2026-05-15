@@ -12,7 +12,7 @@ from typing import Any
 from supabase import Client
 
 from routes.documents import EDITOR_ROLES
-from seo.dataforseo_keywords_for_url import fetch_keywords_for_url
+from seo.dataforseo_keywords_for_url import fetch_keywords_for_urls
 from seo.dataforseo_serp import fetch_serp_google_organic_advanced
 from seo.dataforseo_volume import fetch_search_volume_live
 from seo.seo_graph import _format_answer_markdown
@@ -98,12 +98,28 @@ def tool_seo_search_volume(
     }
 
 
+def _kw_table_lines(rows: list[dict[str, Any]]) -> list[str]:
+    lines = [
+        "| # | Keyword | Volumen mensual | CPC | Competencia |",
+        "| --- | --- | ---: | ---: | ---: |",
+    ]
+    for i, r in enumerate(rows, 1):
+        kw = r.get("keyword") or ""
+        sv = "—" if r.get("search_volume") is None else str(r["search_volume"])
+        cpc_v = r.get("cpc")
+        cpc = "—" if cpc_v is None else f"${float(cpc_v):.2f}"
+        comp_v = r.get("competition")
+        comp = "—" if comp_v is None else f"{float(comp_v):.2f}"
+        lines.append(f"| {i} | {kw} | {sv} | {cpc} | {comp} |")
+    return lines
+
+
 def tool_seo_keywords_for_url(
     client: Client,
     *,
     tenant_id: str,
     user_id: str,
-    url: str,
+    urls: list[str],
     limit: int | None = None,
     location_code: int | None = None,
     language_code: str | None = None,
@@ -132,39 +148,41 @@ def tool_seo_keywords_for_url(
     lang = language_code if language_code else defaults["language_code"]
     lim = limit if limit is not None else 20
 
-    target = (url or "").strip()
-    if not target:
-        return {"ok": False, "error": "Se requiere la URL o dominio a analizar."}
+    clean_urls = [u.strip() for u in (urls or []) if u.strip()]
+    if not clean_urls:
+        return {"ok": False, "error": "Se requiere al menos una URL o dominio."}
 
     try:
-        rows = fetch_keywords_for_url(
-            login, password, target, location_code=loc, language_code=lang, limit=lim
+        result_map = fetch_keywords_for_urls(
+            login, password, clean_urls, location_code=loc, language_code=lang, limit_per_target=lim
         )
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": f"Error DataForSEO keywords_for_url: {exc}"}
 
     lines: list[str] = [
-        f"## Keywords para `{target}`",
+        f"## Keywords por dominio ({len(clean_urls)} URL{'s' if len(clean_urls) > 1 else ''})",
         "",
-        f"**Configuración usada:** location_code={loc}, language_code={lang}, limit={lim}.",
+        f"**Configuración usada:** location_code={loc}, language_code={lang}, limit={lim} por URL.",
         "",
     ]
-    if rows:
-        lines.append("| # | Keyword | Volumen mensual | CPC | Competencia |")
-        lines.append("| --- | --- | ---: | ---: | ---: |")
-        for i, r in enumerate(rows, 1):
-            kw = r.get("keyword") or ""
-            sv = "—" if r.get("search_volume") is None else str(r["search_volume"])
-            cpc_v = r.get("cpc")
-            cpc = "—" if cpc_v is None else f"${float(cpc_v):.2f}"
-            comp_v = r.get("competition")
-            comp = "—" if comp_v is None else f"{float(comp_v):.2f}"
-            lines.append(f"| {i} | {kw} | {sv} | {cpc} | {comp} |")
-        lines.append("")
-        lines.append("_Datos: DataForSEO / Google Ads. Volúmenes son estimaciones mensuales._")
-    else:
-        lines.append("DataForSEO no devolvió keywords para esta URL/dominio.")
+    keywords_summary: list[dict[str, Any]] = []
+    total_kw = 0
 
+    for target in clean_urls:
+        rows = result_map.get(target) or []
+        total_kw += len(rows)
+        lines.append(f"### `{target}`")
+        if rows:
+            lines.extend(_kw_table_lines(rows))
+            keywords_summary.extend(
+                {"target": target, "keyword": r.get("keyword"), "search_volume": r.get("search_volume")}
+                for r in rows
+            )
+        else:
+            lines.append("_Sin resultados para este dominio._")
+        lines.append("")
+
+    lines.append("_Datos: DataForSEO / Google Ads. Volúmenes son estimaciones mensuales._")
     markdown = "\n".join(lines).strip()
 
     return {
@@ -173,12 +191,10 @@ def tool_seo_keywords_for_url(
         "phase": "dataforseo",
         "mode": "keywords_for_url",
         "markdown": markdown,
-        "keywords_summary": [
-            {"keyword": r.get("keyword"), "search_volume": r.get("search_volume")}
-            for r in rows
-        ],
-        "keyword_count": len(rows),
-        "target_url": target,
+        "keywords_summary": keywords_summary[:50],
+        "keyword_count": total_kw,
+        "target_urls": clean_urls,
+        "url_count": len(clean_urls),
         "location_code": loc,
         "language_code": lang,
     }

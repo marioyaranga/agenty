@@ -66,9 +66,10 @@ def _detail_for_phase(phase: str, payload: dict[str, Any]) -> str:
         n = len(blocks) if isinstance(blocks, list) else int(payload.get("block_count") or 0)
         return f"{n} SERP consultada(s)."
     if phase == "keywords_for_url":
-        target = str(payload.get("target_url") or "")
         n = int(payload.get("keyword_count") or 0)
-        return f"{n} keyword(s) para {target}." if target else f"{n} keyword(s)."
+        url_count = int(payload.get("url_count") or 1)
+        suffix = f"{url_count} URL{'s' if url_count > 1 else ''}"
+        return f"{n} keyword(s) para {suffix}."
     if phase == "format":
         n = int(payload.get("keyword_count") or 0)
         mode = str(payload.get("mode") or "")

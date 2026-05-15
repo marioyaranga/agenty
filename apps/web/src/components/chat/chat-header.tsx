@@ -1,13 +1,13 @@
 "use client";
 
 /**
- * Cabecera del panel de chat: muestra el título del hilo activo (lista en contexto o
- * `threadTitleHint` desde GET /threads/:id al hidratar) y permite renombrarlo con
- * `renameActiveThread` → PATCH /agent/threads/:id (título no vacío, máx. 200).
+ * Cabecera del panel de chat: título del hilo (lista o `threadTitleHint` del GET al hidratar).
+ * Renombre: botón lápiz (accesible), doble clic en el título, o Enter/Escape/blur en el input
+ * → `renameActiveThread` (PATCH /agent/threads/:id).
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MessageSquare, Plus } from "lucide-react";
+import { MessageSquare, Pencil, Plus } from "lucide-react";
 import { useChatThreads } from "@/lib/contexts/chat-thread-context";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -124,19 +124,39 @@ export function ChatHeader({ activeThreadId, threadTitleHint, onNewChat }: Props
             ) : null}
           </div>
         ) : (
-          <button
-            type="button"
-            title="Clic para editar el nombre"
-            disabled={saving}
-            onClick={startEditing}
-            className={cn(
-              "max-w-[min(100%,280px)] truncate text-left text-sm text-muted-foreground transition-colors",
-              "rounded-md outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-              saving && "pointer-events-none opacity-50",
-            )}
-          >
-            {displayTitle}
-          </button>
+          <div className="group/title flex min-w-0 max-w-[min(100%,320px)] items-center gap-1">
+            <span
+              className={cn(
+                "min-w-0 flex-1 truncate text-sm text-muted-foreground select-none",
+                saving && "opacity-50",
+              )}
+              title="Doble clic para editar el nombre"
+              onDoubleClick={() => {
+                if (!saving) startEditing();
+              }}
+            >
+              {displayTitle}
+            </span>
+            <button
+              type="button"
+              title="Editar nombre"
+              disabled={saving}
+              aria-label="Editar nombre de la conversación"
+              onClick={(e) => {
+                e.preventDefault();
+                startEditing();
+              }}
+              className={cn(
+                "shrink-0 rounded-md p-1 text-muted-foreground outline-none transition-colors",
+                "opacity-60 hover:bg-accent hover:text-foreground hover:opacity-100",
+                "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                "group-hover/title:opacity-100",
+                saving && "pointer-events-none opacity-40",
+              )}
+            >
+              <Pencil size={14} aria-hidden />
+            </button>
+          </div>
         )}
       </div>
 

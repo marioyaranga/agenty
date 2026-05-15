@@ -901,21 +901,23 @@ GEMINI_TOOL_DECLARATIONS: list[dict[str, Any]] = [
     {
         "name": "tool_seo_keywords_for_url",
         "description": (
-            "Obtiene las keywords asociadas a un sitio web o URL vía DataForSEO (Google Ads). "
+            "Obtiene las keywords asociadas a uno o varios sitios web vía DataForSEO (Google Ads). "
             "Usá esta tool cuando el usuario pida las keywords de un dominio o página, quiera "
-            "analizar por qué términos rankea un competidor, o necesite descubrir keywords a "
-            "partir de una URL."
+            "analizar por qué términos rankean competidores, o necesite descubrir keywords a "
+            "partir de URLs (por ejemplo, las URLs obtenidas de un resultado SERP). "
+            "Podés pasar varias URLs a la vez para obtener todas en una sola consulta."
         ),
         "parameters": {
             "type": "object",
             "properties": {
-                "url": {
-                    "type": "string",
-                    "description": "Dominio o URL a analizar (ej: 'competitor.com' o 'https://competitor.com/blog').",
+                "urls": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Lista de dominios o URLs a analizar (ej: ['competitor.com', 'otro.com']). Podés pasar las URLs del SERP directamente.",
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "Cantidad máxima de keywords a devolver (default 20, máximo 1000).",
+                    "description": "Cantidad máxima de keywords por URL (default 20, máximo 1000).",
                 },
                 "location_code": {
                     "type": "integer",
@@ -926,7 +928,7 @@ GEMINI_TOOL_DECLARATIONS: list[dict[str, Any]] = [
                     "description": "Código de idioma DataForSEO (omitir para usar el default del espacio).",
                 },
             },
-            "required": ["url"],
+            "required": ["urls"],
         },
     },
 ]
