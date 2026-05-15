@@ -8,6 +8,7 @@ postgrest-py reciente ya no expone ``.single()`` en ese encadenamiento.
 
 from __future__ import annotations
 
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -84,6 +85,39 @@ def _bump_thread_updated_at(client: Any, thread_id: str) -> None:
         client.table("agent_threads").update({"updated_at": now}).eq("id", thread_id).execute()
     except Exception:  # noqa: BLE001
         pass
+
+
+def _load_recent_history(
+    client: Any,
+    *,
+    thread_id: str,
+    max_turns: int,
+    max_chars_per_turn: int,
+) -> list[dict[str, Any]]:
+    """Devuelve [{role, content}, ...] de los últimos max_turns turnos completados."""
+    try:
+        res = (
+            client.table("agent_runs")
+            .select("input_message, output_message")
+            .eq("thread_id", thread_id)
+            .eq("status", "completed")
+            .order("created_at", desc=True)
+            .limit(max_turns)
+            .execute()
+        )
+    except Exception:  # noqa: BLE001
+        return []
+
+    rows = [r for r in (res.data or []) if r.get("output_message")]
+    rows.reverse()
+
+    history: list[dict[str, Any]] = []
+    for r in rows:
+        user_content = str(r.get("input_message") or "")[:max_chars_per_turn]
+        asst_content = str(r.get("output_message") or "")[:max_chars_per_turn]
+        history.append({"role": "user", "content": user_content})
+        history.append({"role": "assistant", "content": asst_content})
+    return history
 
 
 def _get_or_create_thread(
@@ -374,6 +408,20 @@ def agent_chat(tenant_id: str):
 
             gemini_key = get_gemini_api_key_for_tenant(client, tenant_id)
             chat_model = get_agent_chat_model_for_tenant(client, tenant_id)
+
+            max_turns = max(1, min(50, int(
+                (os.environ.get("AGENT_HISTORY_MAX_TURNS") or "10").strip() or "10"
+            )))
+            max_chars = max(100, int(
+                (os.environ.get("AGENT_HISTORY_MAX_CHARS_PER_TURN") or "1500").strip() or "1500"
+            ))
+            history = _load_recent_history(
+                client,
+                thread_id=thread_id,
+                max_turns=max_turns,
+                max_chars_per_turn=max_chars,
+            )
+
             graph = build_agent_graph(
                 client,
                 run_id,
@@ -386,6 +434,7 @@ def agent_chat(tenant_id: str):
                 "tenant_id": tenant_id,
                 "user_id": user_id,
                 "message": message,
+                "history": history,
             })
 
             answer = str(final.get("answer") or "")

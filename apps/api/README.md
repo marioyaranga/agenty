@@ -20,6 +20,8 @@ Servicio con `GET /health`, CORS restringido a `WEB_ORIGIN`, **Fase 2:** `GET /v
 | `AGENT_CONTEXT_OK_MIN_SIMILARITY` | Opcional; similitud mínima del mejor match para aceptar contexto y generar (default `0.24`). |
 | `AGENT_MATCH_COUNT` | Opcional; candidatos pedidos al RPC (default `10`). |
 | `AGENT_MAX_RETRIEVAL_ATTEMPTS` | Opcional; máximo **2** recuperaciones semánticas por mensaje (default `2`). |
+| `AGENT_HISTORY_MAX_TURNS` | Opcional; pares user/assistant de turnos previos cargados por thread en cada request (default `10`). |
+| `AGENT_HISTORY_MAX_CHARS_PER_TURN` | Opcional; caracteres máximos por mensaje al armar el bloque de historial (default `1500`). |
 
 ## Endpoints
 

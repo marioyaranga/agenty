@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { useLocalRuntime, type ChatModelAdapter } from "@assistant-ui/react";
+import { useLocalRuntime, type ChatModelAdapter, type ThreadMessageLike } from "@assistant-ui/react";
 import { createClient } from "@/lib/supabase/client";
 import type { SeoSubagentStep } from "@/lib/types/seo-agent";
 
@@ -24,6 +24,7 @@ export type AgentRuntimeCallbacks = {
 export function useWorkyAiRuntime(
   tenantId: string,
   callbacks?: AgentRuntimeCallbacks,
+  initialMessages?: readonly ThreadMessageLike[],
 ) {
   const threadIdRef = useRef<string | null>(null);
 
@@ -119,6 +120,6 @@ export function useWorkyAiRuntime(
     },
   };
 
-  const runtime = useLocalRuntime(adapter);
+  const runtime = useLocalRuntime(adapter, { initialMessages });
   return { runtime, threadIdRef };
 }

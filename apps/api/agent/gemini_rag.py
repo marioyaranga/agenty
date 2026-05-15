@@ -14,9 +14,28 @@ from agent_chat_models import DEFAULT_AGENT_CHAT_MODEL
 from gemini_keys import resolve_gemini_api_key
 
 
+def _build_history_context(
+    history: list[dict[str, Any]],
+    *,
+    max_turns: int,
+    max_chars_per_msg: int,
+) -> str:
+    """Devuelve un bloque de texto con los últimos max_turns pares del historial."""
+    if not history:
+        return ""
+    recent = history[-(max_turns * 2):]
+    lines: list[str] = []
+    for turn in recent:
+        role_label = "Usuario" if turn.get("role") == "user" else "Asistente"
+        content = str(turn.get("content") or "")[:max_chars_per_msg]
+        lines.append(f"{role_label}: {content}")
+    return "\n\n".join(lines)
+
+
 def rewrite_query_for_retrieval(
     user_message: str,
     *,
+    history: list[dict[str, Any]] | None = None,
     api_key: str | None = None,
     model: str | None = None,
 ) -> str:
@@ -24,10 +43,20 @@ def rewrite_query_for_retrieval(
     base = (user_message or "").strip()
     if not base:
         return ""
+
+    history_block = _build_history_context(history or [], max_turns=3, max_chars_per_msg=300)
+    context_section = ""
+    if history_block:
+        context_section = (
+            f"Contexto de la conversación previa:\n{history_block}\n\n"
+            "Si la pregunta contiene referencias como 'eso', 'esa', 'el anterior', 'de lo mismo', "
+            "resolvélas usando el contexto anterior.\n\n"
+        )
+
     prompt = (
         "Convertí la siguiente pregunta de usuario en una sola línea de consulta de búsqueda "
         "para recuperación semántica sobre documentos (sin explicación, sin comillas, máximo 200 "
-        "caracteres, español).\n\n"
+        f"caracteres, español).\n\n{context_section}"
         f"Pregunta:\n{base[:4000]}"
     )
     mid = (model or "").strip() or DEFAULT_AGENT_CHAT_MODEL
@@ -124,6 +153,7 @@ def answer_with_gemini_with_tools(
     matches: list[dict[str, Any]],
     *,
     tool_results: list[dict[str, Any]] | None = None,
+    history: list[dict[str, Any]] | None = None,
     api_key: str | None = None,
     model: str | None = None,
 ) -> dict[str, Any]:
@@ -167,9 +197,13 @@ def answer_with_gemini_with_tools(
         "Si el contexto RAG no alcanza para responder, decilo con claridad. "
         "Cuando una tool SEO devuelva datos con markdown ya formateado, incluílo en la respuesta tal cual."
     )
+    history_block = _build_history_context(history or [], max_turns=10, max_chars_per_msg=1500)
+
     parts = [system_prompt]
     if context_lines:
         parts.extend(context_lines)
+    if history_block:
+        parts.append(f"Historial de la conversación:\n{history_block}")
     if tool_history:
         parts.append(f"Historial de tools ejecutadas:{tool_history}")
     parts.append(f"Pregunta del usuario:\n{user_message.strip()}")

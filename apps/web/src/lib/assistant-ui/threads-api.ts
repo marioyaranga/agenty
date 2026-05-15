@@ -7,6 +7,17 @@ export type ThreadItem = {
   updated_at: string;
 };
 
+export type ThreadRun = {
+  run_id: string;
+  input_message: string;
+  output_message: string | null;
+  status: string;
+  citations: unknown[];
+  created_at: string;
+};
+
+export type ThreadDetail = ThreadItem & { runs: ThreadRun[] };
+
 type ThreadsListResponse = {
   items: ThreadItem[];
   next_cursor: string | null;
@@ -75,6 +86,18 @@ export async function renameThread(
   );
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json() as Promise<ThreadItem>;
+}
+
+export async function getThread(
+  tenantId: string,
+  threadId: string,
+): Promise<ThreadDetail> {
+  const res = await fetch(
+    `${apiBase()}/v1/tenants/${tenantId}/agent/threads/${threadId}`,
+    { headers: await getHeaders(tenantId) },
+  );
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as Promise<ThreadDetail>;
 }
 
 export async function deleteThread(

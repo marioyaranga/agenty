@@ -24,6 +24,7 @@ class AgentGraphState(TypedDict, total=False):
     tenant_id: str
     user_id: str
     message: str
+    history: list[dict[str, Any]]  # [{role: "user"|"assistant", content: str}, ...]
     effective_query: str
     retrieval_count: int
     matches: list[dict[str, Any]]
@@ -165,6 +166,7 @@ def build_agent_graph(
             raw_msg = str(state.get("message") or "")
             new_q = rewrite_query_for_retrieval(
                 raw_msg,
+                history=list(state.get("history") or []),
                 api_key=gemini_api_key,
                 model=chat_model,
             ).strip()
@@ -222,6 +224,7 @@ def build_agent_graph(
                 str(state.get("message") or ""),
                 list(state.get("matches") or []),
                 tool_results=tool_results,
+                history=list(state.get("history") or []),
                 api_key=gemini_api_key,
                 model=chat_model,
             )
