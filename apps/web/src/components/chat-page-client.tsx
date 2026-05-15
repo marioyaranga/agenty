@@ -16,6 +16,8 @@ import type { SeoSubagentStep } from "@/lib/types/seo-agent";
 type HydratedThread = {
   threadId: string | null;
   messages: readonly ThreadMessageLike[];
+  /** Título del GET /threads/:id (cabecera y renombre hasta que figure en la lista paginada). */
+  title: string | null;
 };
 
 function runsToMessages(runs: ThreadRun[]): ThreadMessageLike[] {
@@ -65,22 +67,33 @@ function ChatManager({ tenantId }: { tenantId: string }) {
   const [hydrated, setHydrated] = useState<HydratedThread | null>({
     threadId: null,
     messages: [],
+    title: null,
   });
 
   // Hidratar de forma atómica: no montar ChatInner hasta tener threadId + messages sincronizados.
   useEffect(() => {
     if (!activeThreadId) {
-      setHydrated({ threadId: null, messages: [] });
+      setHydrated({ threadId: null, messages: [], title: null });
       return;
     }
     let cancelled = false;
     setHydrated(null); // loading
     getThread(tenantId, activeThreadId)
       .then((detail) => {
-        if (!cancelled) setHydrated({ threadId: activeThreadId, messages: runsToMessages(detail.runs) });
+        if (!cancelled)
+          setHydrated({
+            threadId: activeThreadId,
+            messages: runsToMessages(detail.runs),
+            title: detail.title,
+          });
       })
       .catch(() => {
-        if (!cancelled) setHydrated({ threadId: activeThreadId, messages: [] });
+        if (!cancelled)
+          setHydrated({
+            threadId: activeThreadId,
+            messages: [],
+            title: null,
+          });
       });
     return () => { cancelled = true; };
   }, [activeThreadId, tenantId]);
@@ -88,11 +101,6 @@ function ChatManager({ tenantId }: { tenantId: string }) {
   const handleNewChat = useCallback(() => {
     setActiveThreadId(null);
   }, [setActiveThreadId]);
-
-  const handleSelectThread = useCallback(
-    (threadId: string) => setActiveThreadId(threadId),
-    [setActiveThreadId],
-  );
 
   if (!hydrated) {
     return (
@@ -107,9 +115,9 @@ function ChatManager({ tenantId }: { tenantId: string }) {
       key={hydrated.threadId ?? "new"}
       tenantId={tenantId}
       activeThreadId={hydrated.threadId}
+      threadTitleHint={hydrated.title}
       initialMessages={hydrated.messages}
       onNewChat={handleNewChat}
-      onSelectThread={handleSelectThread}
     />
   );
 }
@@ -117,15 +125,15 @@ function ChatManager({ tenantId }: { tenantId: string }) {
 function ChatInner({
   tenantId,
   activeThreadId,
+  threadTitleHint,
   initialMessages,
   onNewChat,
-  onSelectThread,
 }: {
   tenantId: string;
   activeThreadId: string | null;
+  threadTitleHint: string | null;
   initialMessages: readonly ThreadMessageLike[];
   onNewChat: () => void;
-  onSelectThread: (threadId: string) => void;
 }) {
   const { onRunStart, onRunComplete, onRunEnd } = useSeoSteps();
   const { threads, upsertThread } = useChatThreads();
@@ -167,32 +175,29 @@ function ChatInner({
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <ChatWithRuntime
-        tenantId={tenantId}
         activeThreadId={activeThreadId}
+        threadTitleHint={threadTitleHint}
         onNewChat={onNewChat}
-        onSelectThread={onSelectThread}
       />
     </AssistantRuntimeProvider>
   );
 }
 
 function ChatWithRuntime({
-  tenantId,
   activeThreadId,
+  threadTitleHint,
   onNewChat,
-  onSelectThread,
 }: {
-  tenantId: string;
   activeThreadId: string | null;
+  threadTitleHint: string | null;
   onNewChat: () => void;
-  onSelectThread: (threadId: string) => void;
 }) {
   return (
     <div className="flex h-full flex-col">
       <ChatHeader
-        tenantId={tenantId}
+        key={activeThreadId ?? "new"}
         activeThreadId={activeThreadId}
-        onSelectThread={onSelectThread}
+        threadTitleHint={threadTitleHint}
         onNewChat={onNewChat}
       />
       <div className="min-h-0 flex-1">
