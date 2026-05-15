@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
+import { SeoLocationLanguageFields } from "@/components/settings/seo-settings-fields";
 import { TenantSwitcher } from "@/components/tenant-switcher";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -236,11 +237,11 @@ export function SettingsPageClient({ tenants }: { tenants: TenantOption[] }) {
     const loc = Number(seoLocationCode);
     const depth = Number(seoDepth);
     if (!Number.isFinite(loc) || loc < 1) {
-      setMessage("location_code inválido.");
+      setMessage("Ubicación de búsqueda inválida.");
       return;
     }
     if (!Number.isFinite(depth) || depth < seoDepthMin || depth > seoDepthMax) {
-      setMessage(`serp_depth debe estar entre ${seoDepthMin} y ${seoDepthMax}.`);
+      setMessage(`La profundidad SERP debe estar entre ${seoDepthMin} y ${seoDepthMax}.`);
       return;
     }
     const apiBase = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "");
@@ -535,47 +536,17 @@ export function SettingsPageClient({ tenants }: { tenants: TenantOption[] }) {
               onChange={(e) => setSeoPassword(e.target.value)}
               placeholder="Password API DataForSEO"
             />
-            <div>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-xs font-medium text-muted-foreground">
-                    location_code
-                  </span>
-                  <Input
-                    type="number"
-                    disabled={savingSeo || !activeTenantId}
-                    value={seoLocationCode}
-                    onChange={(e) => setSeoLocationCode(e.target.value)}
-                    placeholder="2484"
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-xs font-medium text-muted-foreground">
-                    language_code
-                  </span>
-                  <Input
-                    type="text"
-                    disabled={savingSeo || !activeTenantId}
-                    value={seoLanguageCode}
-                    onChange={(e) => setSeoLanguageCode(e.target.value)}
-                    placeholder="es"
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-xs font-medium text-muted-foreground">
-                    serp_depth
-                  </span>
-                  <Input
-                    type="number"
-                    min={seoDepthMin}
-                    max={seoDepthMax}
-                    disabled={savingSeo || !activeTenantId}
-                    value={seoDepth}
-                    onChange={(e) => setSeoDepth(e.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
+            <SeoLocationLanguageFields
+              locationCode={seoLocationCode}
+              languageCode={seoLanguageCode}
+              serpDepth={seoDepth}
+              depthMin={seoDepthMin}
+              depthMax={seoDepthMax}
+              disabled={savingSeo || !activeTenantId}
+              onLocationChange={setSeoLocationCode}
+              onLanguageChange={setSeoLanguageCode}
+              onDepthChange={setSeoDepth}
+            />
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
