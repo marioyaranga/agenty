@@ -148,7 +148,7 @@ def tool_seo_keywords_for_url(
     lang = language_code if language_code else defaults["language_code"]
     lim = limit if limit is not None else 10
 
-    clean_urls = [u.strip() for u in (urls or []) if u.strip()]
+    clean_urls = [u.strip() for u in (urls or []) if u.strip()][:3]
     if not clean_urls:
         return {"ok": False, "error": "Se requiere al menos una URL o dominio."}
 

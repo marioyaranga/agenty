@@ -901,11 +901,12 @@ GEMINI_TOOL_DECLARATIONS: list[dict[str, Any]] = [
     {
         "name": "tool_seo_keywords_for_url",
         "description": (
-            "Obtiene las keywords asociadas a uno o varios sitios web vía DataForSEO (Google Ads). "
+            "Obtiene las keywords asociadas a sitios web vía DataForSEO (Google Ads). "
+            "Procesa hasta 3 URLs por llamada. Si hay más URLs (por ejemplo de un SERP), "
+            "procesalas en tandas de 3: primero las URLs 1-3, luego 4-6, etc. "
             "Usá esta tool cuando el usuario pida las keywords de un dominio o página, quiera "
-            "analizar por qué términos rankean competidores, o necesite descubrir keywords a "
-            "partir de URLs (por ejemplo, las URLs obtenidas de un resultado SERP). "
-            "Podés pasar varias URLs a la vez para obtener todas en una sola consulta."
+            "analizar por qué términos rankean competidores, o necesite descubrir keywords "
+            "a partir de las URLs de un resultado SERP."
         ),
         "parameters": {
             "type": "object",
@@ -913,7 +914,7 @@ GEMINI_TOOL_DECLARATIONS: list[dict[str, Any]] = [
                 "urls": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Lista de dominios o URLs a analizar (ej: ['competitor.com', 'otro.com']). Podés pasar las URLs del SERP directamente.",
+                    "description": "Lista de hasta 3 dominios o URLs a analizar (ej: ['competitor.com', 'otro.com']). Para más de 3, llamá la tool varias veces en tandas.",
                 },
                 "limit": {
                     "type": "integer",
