@@ -2,6 +2,7 @@
 
 Fase 3: metadatos en `public.documents` (RLS en cliente) y bytes en Storage bucket
 `tenant_documents` vía service_role desde este API (sin exponer la clave al browser).
+``POST .../documents`` (multipart) acepta ``folder_id`` opcional en el form (misma semántica que ``/create``).
 
 Fase 4: indexación RAG síncrona (Markdown) + reindex + consulta semántica (`rag/query` vía `rag.match_chunks`).
 Fase 6: embeddings y RAG resuelven clave Gemini por tenant (`gemini_keys`) cuando corresponde.
@@ -77,6 +78,23 @@ def _index_status_for_mime(mime: str) -> str:
 def _allowed_extension(filename: str) -> bool:
     lower = (filename or "").lower()
     return any(lower.endswith(ext) for ext in ALLOWED_EXTENSIONS)
+
+
+def _coerce_upload_mime(filename: str, reported_mime: str) -> str:
+    """Si el navegador manda ``application/octet-stream``, infiere MIME por extensión (p. ej. ``.md`` → RAG)."""
+    base = (reported_mime or "").split(";", 1)[0].strip().lower()
+    if base in ("text/markdown", "text/x-markdown", "text/html", "text/plain"):
+        return base
+    if base not in ("application/octet-stream", "binary/octet-stream", ""):
+        return base or "application/octet-stream"
+    lower = (filename or "").lower()
+    if any(lower.endswith(ext) for ext in (".md", ".markdown", ".mdown", ".mkd")):
+        return "text/markdown"
+    if lower.endswith((".html", ".htm")):
+        return "text/html"
+    if lower.endswith((".txt", ".text")):
+        return "text/plain"
+    return base or "application/octet-stream"
 
 
 def _sanitize_storage_filename(filename: str) -> str:
@@ -471,6 +489,13 @@ def upload_document(tenant_id: str):
     if not title or len(title) > 500:
         return jsonify({"error": "title inválido (1–500 caracteres)"}), 400
 
+    folder_id = request.form.get("folder_id") or None
+    if folder_id:
+        fid, err = parse_uuid(str(folder_id), "folder_id")
+        if err:
+            return err
+        folder_id = fid
+
     file = request.files.get("file")
     if not file or not file.filename:
         return jsonify({"error": "Falta archivo en el campo file"}), 400
@@ -483,9 +508,8 @@ def upload_document(tenant_id: str):
     if len(raw) > max_bytes:
         return jsonify({"error": "Archivo demasiado grande"}), 413
 
-    mime = (file.mimetype or "application/octet-stream").split(";")[0].strip()
-    if not mime:
-        mime = "application/octet-stream"
+    raw_mime = (file.mimetype or "application/octet-stream").split(";")[0].strip()
+    mime = _coerce_upload_mime(file.filename or "", raw_mime or "application/octet-stream")
 
     document_id = str(uuid.uuid4())
     safe_name = _sanitize_storage_filename(file.filename)
@@ -512,6 +536,8 @@ def upload_document(tenant_id: str):
         "index_status": _index_status_for_mime(mime),
         "index_error": None,
     }
+    if folder_id:
+        row["folder_id"] = folder_id
 
     try:
         ins = client.table("documents").insert(row).execute()
@@ -542,7 +568,7 @@ def upload_document(tenant_id: str):
                 .eq("id", str(final_row["id"]))
                 .eq("tenant_id", tenant_id)
                 .select(
-                    "id, tenant_id, created_by, title, storage_path, mime_type, "
+                    "id, tenant_id, folder_id, created_by, title, storage_path, mime_type, "
                     "size_bytes, index_status, index_error, created_at, updated_at"
                 )
                 .execute()

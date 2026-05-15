@@ -49,6 +49,41 @@ export async function fetchDocumentContent(
   return res.text();
 }
 
+/** Extensiones permitidas por la API en ``POST .../documents`` (multipart). */
+export const DOCUMENT_UPLOAD_ACCEPT =
+  ".md,.markdown,.mdown,.mkd,.html,.htm,.txt,.text";
+
+/** Sube bytes desde el navegador (multipart: ``title``, ``file``, ``folder_id`` opcional). */
+export async function uploadDocumentMultipart(
+  tenantId: string,
+  opts: { title: string; file: File; folder_id?: string | null },
+): Promise<DocumentDetail> {
+  const supabase = createClient();
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token ?? "";
+  const fd = new FormData();
+  fd.append("title", opts.title.trim());
+  fd.append("file", opts.file);
+  if (opts.folder_id) {
+    fd.append("folder_id", opts.folder_id);
+  }
+  const res = await fetch(`${apiBase()}/v1/tenants/${tenantId}/documents`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Tenant-Id": tenantId,
+    },
+    body: fd,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(
+      (err as { error?: string }).error ?? `HTTP ${res.status}`,
+    );
+  }
+  return res.json() as Promise<DocumentDetail>;
+}
+
 /** Crea un documento en Storage + fila `documents`. `mime_type` rige el Content-Type (p. ej. `text/html`, `text/markdown`); el explorador lo infiere del título (.html → HTML). */
 export async function createDocument(
   tenantId: string,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Tree, type NodeApi, type NodeRendererProps } from "react-arborist";
 import {
   ChevronRight,
@@ -11,6 +11,7 @@ import {
   Plus,
   FolderPlus,
   Loader2,
+  Upload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/contexts/workspace-context";
@@ -29,9 +30,12 @@ import {
   renameDocument,
   moveDocument,
   fetchDocumentContent,
+  uploadDocumentMultipart,
+  DOCUMENT_UPLOAD_ACCEPT,
 } from "@/lib/api/documents";
-import { Dialog } from "@/components/ui/dialog";
 import { SidebarMenuSkeleton } from "@/components/ui/sidebar";
+
+const EDITOR_ROLES = new Set(["editor", "admin", "owner"]);
 
 // ---------------------------------------------------------------------------
 // Tipo del nodo del árbol
@@ -150,19 +154,37 @@ type CtxMenu = {
 // Panel principal
 // ---------------------------------------------------------------------------
 export function FileExplorerPanel() {
-  const { activeTenantId, setSelectedDocumentId, bootstrapTick } = useWorkspace();
+  const {
+    activeTenantId,
+    setSelectedDocumentId,
+    bootstrapTick,
+    tenants,
+  } = useWorkspace();
   const { openDocument } = useViewer();
+  const activeRole = useMemo(() => {
+    if (!activeTenantId) return "";
+    return tenants.find((t) => t.tenantId === activeTenantId)?.role ?? "";
+  }, [tenants, activeTenantId]);
+  const canMutate = EDITOR_ROLES.has(activeRole);
+
   const [treeData, setTreeData] = useState<TreeNode[]>([]);
   const [loading, setLoading] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
-  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [newFolderDialogOpen, setNewFolderDialogOpen] = useState(false);
   const [newFileDialogOpen, setNewFileDialogOpen] = useState(false);
   const [dialogInput, setDialogInput] = useState("");
-  const [selectedNodeForCtx, setSelectedNodeForCtx] =
-    useState<NodeApi<TreeNode> | null>(null);
   const [newItemParentId, setNewItemParentId] = useState<string | null>(null);
   const [savingDoc, setSavingDoc] = useState(false);
+
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [uploadFolderId, setUploadFolderId] = useState<string | null>(null);
+  const [uploadFolderLabel, setUploadFolderLabel] = useState<string | null>(
+    null,
+  );
+  const [uploadTitle, setUploadTitle] = useState("");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const loadTree = useCallback(async () => {
     if (!activeTenantId) return;
@@ -306,6 +328,50 @@ export function FileExplorerPanel() {
     }
   }
 
+  function openUploadDialog(folderId: string | null, folderLabel: string | null) {
+    setUploadFolderId(folderId);
+    setUploadFolderLabel(folderLabel);
+    setUploadTitle("");
+    setUploadFile(null);
+    setUploadError(null);
+    setUploadDialogOpen(true);
+  }
+
+  async function handleConfirmUpload() {
+    if (!activeTenantId) return;
+    if (!uploadTitle.trim() || !uploadFile) {
+      setUploadError("Completá el título y elegí un archivo.");
+      return;
+    }
+    const name = uploadFile.name.toLowerCase();
+    const ok = [...KNOWN_DOC_FILE_EXTENSIONS].some((ext) =>
+      name.endsWith(`.${ext}`),
+    );
+    if (!ok) {
+      setUploadError("Extensión no permitida para subir.");
+      return;
+    }
+    setUploadError(null);
+    setUploading(true);
+    try {
+      await uploadDocumentMultipart(activeTenantId, {
+        title: uploadTitle.trim(),
+        file: uploadFile,
+        folder_id: uploadFolderId,
+      });
+      setUploadDialogOpen(false);
+      setUploadTitle("");
+      setUploadFile(null);
+      setUploadFolderId(null);
+      setUploadFolderLabel(null);
+      await loadTree();
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : "Error al subir");
+    } finally {
+      setUploading(false);
+    }
+  }
+
   // Eliminar item
   async function handleDeleteNode(node: NodeApi<TreeNode>) {
     if (!activeTenantId) return;
@@ -380,6 +446,22 @@ export function FileExplorerPanel() {
             className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <Plus size={13} />
+          </button>
+          <button
+            type="button"
+            title={
+              canMutate
+                ? "Subir archivo desde tu equipo"
+                : "Se requiere rol editor para subir"
+            }
+            disabled={!canMutate}
+            onClick={() => {
+              if (!canMutate) return;
+              openUploadDialog(null, null);
+            }}
+            className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+          >
+            <Upload size={13} />
           </button>
           <button
             type="button"
@@ -475,6 +557,21 @@ export function FileExplorerPanel() {
               >
                 <Plus size={12} /> Nuevo archivo aquí
               </button>
+              {canMutate ? (
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-accent"
+                  onClick={() => {
+                    openUploadDialog(
+                      ctxMenu.node.data.id,
+                      ctxMenu.node.data.name,
+                    );
+                    setCtxMenu(null);
+                  }}
+                >
+                  <Upload size={12} /> Subir archivo aquí
+                </button>
+              ) : null}
               <div className="my-1 border-t" />
             </>
           )}
@@ -501,6 +598,32 @@ export function FileExplorerPanel() {
           </button>
         </div>
       )}
+
+      {/* Dialog: subir archivo */}
+      <UploadDocumentDialog
+        open={uploadDialogOpen}
+        title={uploadTitle}
+        onTitleChange={setUploadTitle}
+        file={uploadFile}
+        onFileChange={(f) => {
+          setUploadFile(f);
+          if (f && !uploadTitle.trim()) {
+            setUploadTitle(f.name);
+          }
+        }}
+        folderLabel={uploadFolderLabel}
+        error={uploadError}
+        uploading={uploading}
+        onConfirm={() => void handleConfirmUpload()}
+        onCancel={() => {
+          setUploadDialogOpen(false);
+          setUploadTitle("");
+          setUploadFile(null);
+          setUploadError(null);
+          setUploadFolderId(null);
+          setUploadFolderLabel(null);
+        }}
+      />
 
       {/* Dialog: nueva carpeta */}
       <SimpleInputDialog
@@ -613,6 +736,100 @@ function NodeRenderer({
           ) : null}
         </span>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Dialog: subir archivo (multipart, misma API que /documents)
+// ---------------------------------------------------------------------------
+function UploadDocumentDialog({
+  open,
+  title,
+  onTitleChange,
+  file,
+  onFileChange,
+  folderLabel,
+  error,
+  uploading,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  title: string;
+  onTitleChange: (v: string) => void;
+  file: File | null;
+  onFileChange: (f: File | null) => void;
+  folderLabel: string | null;
+  error: string | null;
+  uploading: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="w-[min(100%,22rem)] rounded-xl border bg-background p-4 shadow-lg">
+        <h3 className="mb-3 text-sm font-semibold">Subir archivo</h3>
+        {folderLabel ? (
+          <p className="mb-2 text-xs text-muted-foreground">
+            Carpeta: <span className="text-foreground">{folderLabel}</span>
+          </p>
+        ) : (
+          <p className="mb-2 text-xs text-muted-foreground">
+            Se guardará en la raíz del explorador.
+          </p>
+        )}
+        <label className="mb-1 block text-xs text-muted-foreground" htmlFor="upload-doc-title">
+          Título en la app
+        </label>
+        <input
+          id="upload-doc-title"
+          type="text"
+          autoFocus
+          placeholder="Ej. Manual interno"
+          value={title}
+          onChange={(e) => onTitleChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void onConfirm();
+            if (e.key === "Escape") onCancel();
+          }}
+          className="mb-3 w-full rounded-lg border bg-muted/30 px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
+        />
+        <label className="mb-1 block text-xs text-muted-foreground" htmlFor="upload-doc-file">
+          Archivo
+        </label>
+        <input
+          id="upload-doc-file"
+          type="file"
+          accept={DOCUMENT_UPLOAD_ACCEPT}
+          className="w-full max-w-full text-xs text-muted-foreground"
+          onChange={(e) => onFileChange(e.target.files?.[0] ?? null)}
+        />
+        {error ? (
+          <p className="mt-2 text-xs text-destructive" role="alert">
+            {error}
+          </p>
+        ) : null}
+        <div className="mt-3 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-lg px-3 py-1 text-xs text-muted-foreground hover:bg-accent"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={() => void onConfirm()}
+            disabled={!title.trim() || !file || uploading}
+            className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50"
+          >
+            {uploading && <Loader2 size={11} className="animate-spin" />}
+            Subir
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
