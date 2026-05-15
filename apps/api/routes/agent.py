@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from agent.graph import build_agent_graph
 from agent.persistence import finalize_agent_run, insert_agent_run
@@ -441,6 +441,7 @@ def agent_chat(tenant_id: str):
         )
     except Exception as exc:  # noqa: BLE001
         err_s = str(exc)[:8000]
+        current_app.logger.exception("agent_chat falló: %s", exc)
         try:
             finalize_agent_run(
                 client,
