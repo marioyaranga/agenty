@@ -40,14 +40,14 @@ export function AppShell({
               <ResizablePanelGroup
                 className="flex-1 overflow-hidden"
               >
-                <ResizablePanel id="center" minSize={35} defaultSize={65}>
+                <ResizablePanel id="center" minSize={20} defaultSize={35}>
                   <div className="h-full overflow-y-auto">{children}</div>
                 </ResizablePanel>
                 <ResizableHandle withHandle />
                 <ResizablePanel
                   id="viewer"
-                  minSize={20}
-                  defaultSize={35}
+                  minSize={35}
+                  defaultSize={65}
                   collapsible
                 >
                   <MarkdownViewerPanel />
