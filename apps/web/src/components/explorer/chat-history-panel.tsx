@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useChatThreads } from "@/lib/contexts/chat-thread-context";
 import { SidebarMenuSkeleton } from "@/components/ui/sidebar";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 export function ChatHistoryPanel({
   onNewChat,
@@ -14,7 +15,7 @@ export function ChatHistoryPanel({
   onNewChat: () => void;
   onSelectThread: (threadId: string) => void;
 }) {
-  const { threads, activeThreadId, loading, removeThread } = useChatThreads();
+  const { threads, activeThreadId, loading, loadingMore, hasMore, removeThread, loadMore } = useChatThreads();
   const router = useRouter();
 
   const handleSelect = useCallback(
@@ -57,7 +58,7 @@ export function ChatHistoryPanel({
       </div>
 
       {/* Lista */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <ScrollArea className="min-h-0 flex-1">
         {loading && threads.length === 0 ? (
           <div className="px-2 py-2 space-y-1">
             <SidebarMenuSkeleton />
@@ -98,9 +99,21 @@ export function ChatHistoryPanel({
                 </button>
               </li>
             ))}
+            {hasMore && (
+              <li>
+                <button
+                  type="button"
+                  onClick={() => void loadMore()}
+                  disabled={loadingMore}
+                  className="flex w-full items-center justify-center py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+                >
+                  {loadingMore ? "Cargando…" : "Ver más"}
+                </button>
+              </li>
+            )}
           </ul>
         )}
-      </div>
+      </ScrollArea>
     </div>
   );
 }

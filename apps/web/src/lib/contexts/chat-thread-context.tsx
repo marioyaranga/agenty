@@ -16,12 +16,17 @@ import {
 } from "@/lib/assistant-ui/threads-api";
 import { useWorkspace } from "@/lib/contexts/workspace-context";
 
+const PAGE_SIZE = 15;
+
 type ChatThreadState = {
   threads: ThreadItem[];
   activeThreadId: string | null;
   loading: boolean;
+  loadingMore: boolean;
+  hasMore: boolean;
   setActiveThreadId: (id: string | null) => void;
   refresh: () => Promise<void>;
+  loadMore: () => Promise<void>;
   upsertThread: (item: ThreadItem) => void;
   renameActiveThread: (title: string) => Promise<void>;
   removeThread: (id: string) => Promise<void>;
@@ -34,20 +39,38 @@ export function ChatThreadProvider({ children }: { children: React.ReactNode }) 
   const [threads, setThreads] = useState<ThreadItem[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const loadedTenantRef = useRef<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!activeTenantId) return;
     setLoading(true);
     try {
-      const res = await listThreads(activeTenantId, { limit: 50 });
+      const res = await listThreads(activeTenantId, { limit: PAGE_SIZE });
       setThreads(res.items);
+      setNextCursor(res.next_cursor);
     } catch {
       setThreads([]);
+      setNextCursor(null);
     } finally {
       setLoading(false);
     }
   }, [activeTenantId]);
+
+  const loadMore = useCallback(async () => {
+    if (!activeTenantId || !nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const res = await listThreads(activeTenantId, { limit: PAGE_SIZE, cursor: nextCursor });
+      setThreads((prev) => [...prev, ...res.items]);
+      setNextCursor(res.next_cursor);
+    } catch {
+      /* silencioso */
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [activeTenantId, nextCursor, loadingMore]);
 
   useEffect(() => {
     if (!activeTenantId) return;
@@ -95,8 +118,11 @@ export function ChatThreadProvider({ children }: { children: React.ReactNode }) 
         threads,
         activeThreadId,
         loading,
+        loadingMore,
+        hasMore: nextCursor !== null,
         setActiveThreadId,
         refresh,
+        loadMore,
         upsertThread,
         renameActiveThread,
         removeThread,
