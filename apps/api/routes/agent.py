@@ -16,6 +16,7 @@ from flask import Blueprint, current_app, jsonify, request
 
 from agent.graph import build_agent_graph
 from agent.persistence import finalize_agent_run, insert_agent_run
+from agent_chat_models import get_agent_chat_model_for_tenant
 from agent.tracing import (
     finish_langsmith_root,
     langsmith_api_key_configured,
