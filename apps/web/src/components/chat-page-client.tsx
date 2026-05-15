@@ -135,7 +135,7 @@ function ChatInner({
   initialMessages: readonly ThreadMessageLike[];
   onNewChat: () => void;
 }) {
-  const { onRunStart, onRunComplete, onRunEnd } = useSeoSteps();
+  const { onRunStart, onRunComplete, onRunEnd, onStepProgress } = useSeoSteps();
   const { threads, upsertThread } = useChatThreads();
   const { mentionsRef, clearMentions } = useMentions();
 
@@ -166,7 +166,7 @@ function ChatInner({
 
   const { runtime } = useWorkyAiRuntime(
     tenantId,
-    { onRunStart, onRunComplete: handleRunComplete, onRunEnd, onThreadUpdate: handleThreadUpdate },
+    { onRunStart, onRunComplete: handleRunComplete, onRunEnd, onThreadUpdate: handleThreadUpdate, onStepProgress },
     initialMessages,
     activeThreadId,
     mentionsRef,

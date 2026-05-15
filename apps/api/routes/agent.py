@@ -13,7 +13,9 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from flask import Blueprint, current_app, jsonify, request
+import json
+
+from flask import Blueprint, Response, current_app, jsonify, request, stream_with_context
 
 from agent.graph import build_agent_graph
 from agent.persistence import finalize_agent_run, insert_agent_run, list_agent_steps_for_run
@@ -39,6 +41,65 @@ from tenant_http import (
 )
 
 bp = Blueprint("agent", __name__, url_prefix="/v1")
+
+# ---------------------------------------------------------------------------
+# Helpers SSE
+# ---------------------------------------------------------------------------
+
+_NODE_SSE: dict[str, tuple[str, str]] = {
+    "retrieve": ("Buscando en documentos…", "Búsqueda semántica en tu base de conocimiento."),
+    "rewrite_query": ("Refinando la búsqueda…", "Mejorando la consulta para obtener mejores resultados."),
+    "generate": ("Generando respuesta…", "Analizando el contexto y redactando la respuesta."),
+    "execute_tool": ("Ejecutando herramienta…", "Realizando una acción en tu espacio de trabajo."),
+    "respond_no_context": ("Preparando respuesta…", "Redactando la respuesta."),
+}
+
+
+def _sse(data: dict) -> str:
+    return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def _next_rag_node(
+    completed: str,
+    state: dict,
+    *,
+    min_ok_sim: float,
+    max_attempts: int,
+) -> str | None:
+    """Predice el próximo nodo del grafo para el indicador SSE de 'running'."""
+    if completed == "retrieve":
+        matches = list(state.get("matches") or [])
+        best = max((float(m.get("similarity") or 0.0) for m in matches), default=0.0)
+        context_ok = bool(matches) and best >= min_ok_sim
+        if context_ok:
+            return "generate"
+        n = int(state.get("retrieval_count") or 0)
+        return "rewrite_query" if n < max_attempts else "generate"
+    if completed == "rewrite_query":
+        return "retrieve"
+    if completed == "generate":
+        if state.get("pending_tool_name"):
+            return "execute_tool"
+        return None
+    if completed == "execute_tool":
+        return "generate"
+    return None
+
+
+def _read_float_env(name: str, default: float) -> float:
+    raw = (os.environ.get(name) or "").strip()
+    try:
+        return float(raw) if raw else default
+    except ValueError:
+        return default
+
+
+def _read_int_env(name: str, default: int) -> int:
+    raw = (os.environ.get(name) or "").strip()
+    try:
+        return int(raw) if raw else default
+    except ValueError:
+        return default
 
 # ---------------------------------------------------------------------------
 # Helpers internos
@@ -344,11 +405,12 @@ def delete_thread(tenant_id: str, thread_id: str):
 
 
 # ---------------------------------------------------------------------------
-# Endpoint de chat (Fase 9: agrega thread_id + citations)
+# Endpoint de chat — SSE streaming (nodos LangGraph en tiempo real)
 # ---------------------------------------------------------------------------
 
 @bp.post("/tenants/<tenant_id>/agent/chat")
 def agent_chat(tenant_id: str):
+    # --- Auth + setup síncrono (puede devolver errores HTTP normales) ---
     claims, err = require_bearer_jwt()
     if err:
         return err
@@ -419,108 +481,119 @@ def agent_chat(tenant_id: str):
         return err
 
     run_id = str(uuid.uuid4())
-    ls_root: Any = None
-    trace_id: str | None = None
 
-    try:
-        with optional_langsmith_root(
-            name="workyai_agent_chat",
-            inputs={"message": message[:2000], "tenant_id": tenant_id},
-        ) as ls_rt:
-            ls_root = ls_rt
-            trace_id = trace_id_for_persistence(ls_root)
+    # --- Generador SSE (ejecuta el grafo en streaming) ---
+    def generate_sse():  # noqa: C901
+        ls_root: Any = None
+        trace_id: str | None = None
 
-            insert_agent_run(
-                client,
-                run_id=run_id,
-                tenant_id=tenant_id,
-                user_id=user_id,
-                input_message=message,
-                thread_id=thread_id,
-            )
+        try:
+            with optional_langsmith_root(
+                name="workyai_agent_chat",
+                inputs={"message": message[:2000], "tenant_id": tenant_id},
+            ) as ls_rt:
+                ls_root = ls_rt
+                trace_id = trace_id_for_persistence(ls_root)
 
-            gemini_key = get_gemini_api_key_for_tenant(client, tenant_id)
-            chat_model = get_agent_chat_model_for_tenant(client, tenant_id)
+                gemini_key = get_gemini_api_key_for_tenant(client, tenant_id)
+                chat_model = get_agent_chat_model_for_tenant(client, tenant_id)
 
-            max_turns = max(1, min(50, int(
-                (os.environ.get("AGENT_HISTORY_MAX_TURNS") or "10").strip() or "10"
-            )))
-            max_chars = max(100, int(
-                (os.environ.get("AGENT_HISTORY_MAX_CHARS_PER_TURN") or "1500").strip() or "1500"
-            ))
-            history = _load_recent_history(
-                client,
-                thread_id=thread_id,
-                max_turns=max_turns,
-                max_chars_per_turn=max_chars,
-            )
+                max_turns = max(1, min(50, _read_int_env("AGENT_HISTORY_MAX_TURNS", 10)))
+                max_chars = max(100, _read_int_env("AGENT_HISTORY_MAX_CHARS_PER_TURN", 4000))
+                history = _load_recent_history(
+                    client,
+                    thread_id=thread_id,
+                    max_turns=max_turns,
+                    max_chars_per_turn=max_chars,
+                )
 
-            graph = build_agent_graph(
-                client,
-                run_id,
-                gemini_api_key=gemini_key,
-                chat_model=chat_model,
-                user_id=user_id,
-                langsmith_parent=ls_root,
-            )
-            final = graph.invoke({
-                "tenant_id": tenant_id,
-                "user_id": user_id,
-                "message": message,
-                "history": history,
-                "pinned_docs": pinned_docs,
-            })
+                graph = build_agent_graph(
+                    client,
+                    run_id,
+                    gemini_api_key=gemini_key,
+                    chat_model=chat_model,
+                    user_id=user_id,
+                    langsmith_parent=ls_root,
+                )
 
-            answer = str(final.get("answer") or "")
-            citations = list(final.get("citations") or [])
-            step_rows = list_agent_steps_for_run(client, run_id)
-            steps = format_seo_steps_for_ui(step_rows)
+                insert_agent_run(
+                    client,
+                    run_id=run_id,
+                    tenant_id=tenant_id,
+                    user_id=user_id,
+                    input_message=message,
+                    thread_id=thread_id,
+                )
 
-            finalize_agent_run(
-                client,
-                run_id=run_id,
-                status="completed",
-                output_message=answer,
-                langsmith_trace_id=trace_id,
-                citations=citations,
-            )
+                # Primer evento: conexión establecida + primer nodo arrancando
+                yield _sse({"type": "started", "run_id": run_id, "thread_id": thread_id})
+                lbl0, desc0 = _NODE_SSE["retrieve"]
+                yield _sse({"type": "step", "node": "retrieve", "status": "running", "label": lbl0, "description": desc0})
 
-            _bump_thread_updated_at(client, thread_id)
+                initial_state = {
+                    "tenant_id": tenant_id,
+                    "user_id": user_id,
+                    "message": message,
+                    "history": history,
+                    "pinned_docs": pinned_docs,
+                }
 
-            record_audit(
-                client,
-                tenant_id=tenant_id,
-                actor_user_id=user_id,
-                event_type="agent.chat.completed",
-                payload={
-                    "run_id": run_id,
-                    "thread_id": thread_id,
-                    "message_preview": message[:400],
-                    "answer_preview": answer[:400],
-                    "citations_count": len(citations),
-                },
-                agent_run_id=run_id,
-            )
+                min_ok_sim = _read_float_env("AGENT_CONTEXT_OK_MIN_SIMILARITY", 0.24)
+                max_att = min(2, max(1, _read_int_env("AGENT_MAX_RETRIEVAL_ATTEMPTS", 2)))
 
-            notify_agent_chat_outcome(
-                client,
-                tenant_id=tenant_id,
-                user_id=user_id,
-                run_id=run_id,
-                completed=True,
-            )
+                accumulated: dict[str, Any] = {}
+                for chunk in graph.stream(initial_state, stream_mode="updates"):
+                    for node_name, updates in chunk.items():
+                        if node_name.startswith("_"):
+                            continue
+                        if isinstance(updates, dict):
+                            accumulated.update(updates)
+                        lbl, desc = _NODE_SSE.get(node_name, (node_name, ""))
+                        yield _sse({"type": "step", "node": node_name, "status": "done", "label": lbl, "description": desc})
+                        next_n = _next_rag_node(node_name, accumulated, min_ok_sim=min_ok_sim, max_attempts=max_att)
+                        if next_n:
+                            n_lbl, n_desc = _NODE_SSE.get(next_n, (next_n, ""))
+                            yield _sse({"type": "step", "node": next_n, "status": "running", "label": n_lbl, "description": n_desc})
 
-            finish_langsmith_root(
-                ls_root,
-                outputs={
-                    "run_id": run_id,
-                    "answer_preview": answer[:500],
-                },
-            )
+                answer = str(accumulated.get("answer") or "")
+                citations = list(accumulated.get("citations") or [])
+                step_rows = list_agent_steps_for_run(client, run_id)
+                steps = format_seo_steps_for_ui(step_rows)
 
-        return (
-            jsonify(
-                {
+                finalize_agent_run(
+                    client,
+                    run_id=run_id,
+                    status="completed",
+                    output_message=answer,
+                    langsmith_trace_id=trace_id,
+                    citations=citations,
+                )
+                _bump_thread_updated_at(client, thread_id)
+                record_audit(
+                    client,
+                    tenant_id=tenant_id,
+                    actor_user_id=user_id,
+                    event_type="agent.chat.completed",
+                    payload={
+                        "run_id": run_id,
+                        "thread_id": thread_id,
+                        "message_preview": message[:400],
+                        "answer_preview": answer[:400],
+                        "citations_count": len(citations),
+                    },
+                    agent_run_id=run_id,
+                )
+                notify_agent_chat_outcome(
+                    client,
+                    tenant_id=tenant_id,
+                    user_id=user_id,
+                    run_id=run_id,
+                    completed=True,
+                )
+                finish_langsmith_root(ls_root, outputs={"run_id": run_id, "answer_preview": answer[:500]})
+
+                yield _sse({
+                    "type": "done",
                     "run_id": run_id,
                     "thread_id": thread_id,
                     "answer": answer,
@@ -528,46 +601,38 @@ def agent_chat(tenant_id: str):
                     "steps": steps,
                     "langsmith_trace_id": trace_id,
                     "langsmith_enabled": langsmith_api_key_configured(),
-                }
-            ),
-            200,
-        )
-    except Exception as exc:  # noqa: BLE001
-        err_s = str(exc)[:8000]
-        current_app.logger.exception("agent_chat falló: %s", exc)
-        try:
-            finalize_agent_run(
-                client,
-                run_id=run_id,
-                status="failed",
-                error=err_s,
-                langsmith_trace_id=trace_id,
-            )
-        except Exception:  # noqa: BLE001
-            pass
-        record_audit(
-            client,
-            tenant_id=tenant_id,
-            actor_user_id=user_id,
-            event_type="agent.chat.failed",
-            payload={
-                "run_id": run_id,
-                "thread_id": thread_id,
-                "message_preview": message[:400],
-                "detail_preview": err_s[:800],
-            },
-            agent_run_id=run_id,
-        )
-        notify_agent_chat_outcome(
-            client,
-            tenant_id=tenant_id,
-            user_id=user_id,
-            run_id=run_id,
-            completed=False,
-            detail=err_s,
-        )
-        finish_langsmith_root(ls_root, error=err_s)
-        return (
-            jsonify({"error": "Fallo del agente", "detail": err_s, "run_id": run_id, "thread_id": thread_id}),
-            502,
-        )
+                })
+
+        except Exception as exc:  # noqa: BLE001
+            err_s = str(exc)[:8000]
+            current_app.logger.exception("agent_chat SSE falló: %s", exc)
+            try:
+                finalize_agent_run(client, run_id=run_id, status="failed", error=err_s, langsmith_trace_id=trace_id)
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                record_audit(
+                    client,
+                    tenant_id=tenant_id,
+                    actor_user_id=user_id,
+                    event_type="agent.chat.failed",
+                    payload={"run_id": run_id, "thread_id": thread_id, "message_preview": message[:400], "detail_preview": err_s[:800]},
+                    agent_run_id=run_id,
+                )
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                notify_agent_chat_outcome(client, tenant_id=tenant_id, user_id=user_id, run_id=run_id, completed=False, detail=err_s)
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                finish_langsmith_root(ls_root, error=err_s)
+            except Exception:  # noqa: BLE001
+                pass
+            yield _sse({"type": "error", "detail": err_s, "run_id": run_id, "thread_id": thread_id})
+
+    return Response(
+        stream_with_context(generate_sse()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

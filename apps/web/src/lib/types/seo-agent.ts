@@ -1,4 +1,6 @@
-export type SeoSubagentPhase = "parse" | "volume" | "serp" | "format";
+export type SeoSubagentPhase =
+  | "parse" | "volume" | "serp" | "format" | "keywords_for_url"
+  | "retrieve" | "rewrite_query" | "generate" | "execute_tool" | "respond_no_context";
 
 export type SeoSubagentStepStatus =
   | "pending"
