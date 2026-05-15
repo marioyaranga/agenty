@@ -1,31 +1,24 @@
 "use client";
 
 import { useCallback } from "react";
-import { usePathname } from "next/navigation";
-import { ClipboardList, Settings } from "lucide-react";
 
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { LogoutButton } from "@/components/logout-button";
 import { FileExplorerPanel } from "@/components/explorer/file-explorer-panel";
 import { ChatHistoryPanel } from "@/components/explorer/chat-history-panel";
 import { useChatThreads } from "@/lib/contexts/chat-thread-context";
+import { SidebarLeftFooterAccount } from "@/components/shell/sidebar-left-footer-account";
 
-const BOTTOM_NAV = [
-  { href: "/settings", label: "Configuración", icon: Settings },
-] as const;
-
-const AUDIT_ITEM = { href: "/audit", label: "Auditoría", icon: ClipboardList };
-
-export function SidebarLeft({ showAudit }: { showAudit: boolean }) {
-  const pathname = usePathname();
-  const bottomItems = showAudit ? [...BOTTOM_NAV, AUDIT_ITEM] : BOTTOM_NAV;
+export function SidebarLeft({
+  userEmail,
+  showAudit,
+}: {
+  userEmail: string;
+  showAudit: boolean;
+}) {
   const { setActiveThreadId } = useChatThreads();
 
   // Pedimos al contexto que cambie el thread — ChatWithRuntime reacciona y hace switchToNewThread.
@@ -57,23 +50,12 @@ export function SidebarLeft({ showAudit }: { showAudit: boolean }) {
         </div>
       </SidebarContent>
 
-      {/* Nav inferior (Configuración, Auditoría) */}
+      {/* Cuenta, espacio, configuración y cierre (estilo sidebar-07) */}
       <SidebarFooter>
-        <SidebarMenu>
-          {bottomItems.map(({ href, label, icon: Icon }) => (
-            <SidebarMenuItem key={href}>
-              <SidebarMenuButton
-                render={<a href={href} />}
-                isActive={pathname === href || pathname.startsWith(href + "/")}
-                tooltip={label}
-              >
-                <Icon />
-                <span>{label}</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          ))}
-        </SidebarMenu>
-        <LogoutButton />
+        <SidebarLeftFooterAccount
+          userEmail={userEmail}
+          showAudit={showAudit}
+        />
       </SidebarFooter>
     </Sidebar>
   );

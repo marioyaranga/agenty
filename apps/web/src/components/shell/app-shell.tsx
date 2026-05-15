@@ -34,9 +34,9 @@ export function AppShell({
         <ChatThreadProvider>
         <ViewerProvider>
           <SidebarProvider className="h-full min-h-0">
-            <SidebarLeft showAudit={showAudit} />
+            <SidebarLeft userEmail={userEmail} showAudit={showAudit} />
             <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-              <TopBar userEmail={userEmail} />
+              <TopBar />
               <ResizablePanelGroup
                 className="flex-1 overflow-hidden"
               >

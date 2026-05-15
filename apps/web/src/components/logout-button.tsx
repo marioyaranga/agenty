@@ -5,6 +5,15 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 
+export async function signOutAndRedirect(
+  router: Pick<ReturnType<typeof useRouter>, "push" | "refresh">,
+) {
+  const supabase = createClient();
+  await supabase.auth.signOut();
+  router.push("/login");
+  router.refresh();
+}
+
 export function LogoutButton() {
   const router = useRouter();
 
@@ -13,12 +22,7 @@ export function LogoutButton() {
       type="button"
       variant="outline"
       size="sm"
-      onClick={async () => {
-        const supabase = createClient();
-        await supabase.auth.signOut();
-        router.push("/login");
-        router.refresh();
-      }}
+      onClick={() => void signOutAndRedirect(router)}
     >
       Cerrar sesión
     </Button>
