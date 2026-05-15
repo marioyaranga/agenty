@@ -3,6 +3,12 @@
 /**
  * Pie del sidebar (patrón tipo shadcn sidebar-07): un único disparador con menú
  * que agrupa usuario, espacio de trabajo, configuración, auditoría y cierre de sesión.
+ *
+ * El trigger usa Menu.Trigger con el botón nativo del SidebarMenuButton (sin
+ * `nativeButton={false}`) y sin `tooltip` en ese botón, para no anidar Tooltip + Menu.
+ *
+ * `DropdownMenuLabel` es un GroupLabel de Base UI y debe ir dentro de
+ * `DropdownMenuGroup` (error de producción #31 si falta el Group).
  */
 import { useRouter } from "next/navigation";
 import {
@@ -17,6 +23,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
@@ -60,13 +67,14 @@ export function SidebarLeftFooterAccount({
       <SidebarMenuItem>
         <DropdownMenu>
           <DropdownMenuTrigger
-            nativeButton={false}
             render={
               <SidebarMenuButton
                 size="lg"
-                tooltip={{
-                  children: activeTenant?.name ?? "Cuenta",
-                }}
+                title={
+                  activeTenant?.name
+                    ? `${activeTenant.name} — ${userEmail}`
+                    : userEmail || "Cuenta"
+                }
                 className="data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground"
               >
                 <Avatar size="sm" className="rounded-lg">
@@ -100,30 +108,32 @@ export function SidebarLeftFooterAccount({
             </div>
             <DropdownMenuSeparator />
 
-            {tenants.length > 0 ? (
+            {tenants.length > 0 && activeTenantId ? (
               <>
-                <DropdownMenuLabel className="text-xs text-muted-foreground">
-                  Espacio de trabajo
-                </DropdownMenuLabel>
-                <DropdownMenuRadioGroup
-                  value={activeTenantId ?? ""}
-                  onValueChange={(id) => {
-                    if (id) setActiveTenantId(id);
-                  }}
-                >
-                  {tenants.map((t) => (
-                    <DropdownMenuRadioItem
-                      key={t.tenantId}
-                      value={t.tenantId}
-                      className="flex-col items-stretch gap-0.5"
-                    >
-                      <span className="w-full truncate">{t.name}</span>
-                      <span className="w-full text-xs font-normal text-muted-foreground capitalize">
-                        {t.role}
-                      </span>
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel className="text-xs text-muted-foreground">
+                    Espacio de trabajo
+                  </DropdownMenuLabel>
+                  <DropdownMenuRadioGroup
+                    value={activeTenantId}
+                    onValueChange={(id) => {
+                      if (id) setActiveTenantId(id);
+                    }}
+                  >
+                    {tenants.map((t) => (
+                      <DropdownMenuRadioItem
+                        key={t.tenantId}
+                        value={t.tenantId}
+                        className="flex-col items-stretch gap-0.5"
+                      >
+                        <span className="w-full truncate">{t.name}</span>
+                        <span className="w-full text-xs font-normal text-muted-foreground capitalize">
+                          {t.role}
+                        </span>
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuGroup>
                 <DropdownMenuSeparator />
               </>
             ) : null}
