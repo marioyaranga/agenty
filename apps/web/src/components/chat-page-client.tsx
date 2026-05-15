@@ -126,10 +126,8 @@ function ChatInner({
     tenantId,
     { onRunStart, onRunComplete, onRunEnd },
     initialMessages,
+    activeThreadId,
   );
-
-  // Sincronizar el threadIdRef con el thread activo al montar.
-  threadIdRef.current = activeThreadId;
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>

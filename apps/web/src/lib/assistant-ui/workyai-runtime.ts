@@ -25,8 +25,9 @@ export function useWorkyAiRuntime(
   tenantId: string,
   callbacks?: AgentRuntimeCallbacks,
   initialMessages?: readonly ThreadMessageLike[],
+  initialThreadId?: string | null,
 ) {
-  const threadIdRef = useRef<string | null>(null);
+  const threadIdRef = useRef<string | null>(initialThreadId ?? null);
 
   const adapter: ChatModelAdapter = {
     async run({ messages, abortSignal }) {
