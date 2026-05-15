@@ -45,6 +45,53 @@ type TreeNode = {
   data: FolderItem | DocumentItem;
 };
 
+/** MIME al crear desde el explorador: la API usa esto para Storage y RAG (solo indexa Markdown). */
+function inferMimeTypeForNewDocument(title: string): string {
+  const t = title.trim().toLowerCase();
+  if (t.endsWith(".html") || t.endsWith(".htm")) return "text/html";
+  if (t.endsWith(".txt") || t.endsWith(".text")) return "text/plain";
+  return "text/markdown";
+}
+
+const KNOWN_DOC_FILE_EXTENSIONS = new Set([
+  "md",
+  "markdown",
+  "mdown",
+  "mkd",
+  "html",
+  "htm",
+  "txt",
+  "text",
+]);
+
+/** El título ya parece traer extensión de archivo (no mostramos sufijo duplicado desde mime). */
+function titleLooksLikeWithFileExtension(title: string): boolean {
+  const t = title.trim();
+  const i = t.lastIndexOf(".");
+  if (i <= 0 || i === t.length - 1) return false;
+  const ext = t.slice(i + 1).toLowerCase();
+  if (KNOWN_DOC_FILE_EXTENSIONS.has(ext)) return true;
+  // Sufijo tipo "json", "csv", etc.: corto, alfanumérico y con al menos una letra (evita "15.05.2026").
+  if (
+    ext.length >= 1 &&
+    ext.length <= 12 &&
+    /[a-z]/i.test(ext) &&
+    /^[a-z0-9]+$/i.test(ext)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Extensión solo visual si el nombre guardado no la incluye (el `title` en DB no cambia). */
+function displayOnlyExtensionFromMime(mimeType?: string): string {
+  const base = (mimeType ?? "text/markdown").split(";")[0].trim().toLowerCase();
+  if (base === "text/html") return ".html";
+  if (base === "text/plain") return ".txt";
+  if (base === "text/markdown" || base === "text/x-markdown") return ".md";
+  return "";
+}
+
 function buildTree(
   folders: FolderItem[],
   documents: DocumentItem[],
@@ -239,13 +286,14 @@ export function FileExplorerPanel() {
   // Crear documento
   async function handleCreateDocument() {
     if (!activeTenantId || !dialogInput.trim()) return;
+    const title = dialogInput.trim();
     setSavingDoc(true);
     try {
       await createDocument(activeTenantId, {
-        title: dialogInput.trim(),
+        title,
         content: "",
         folder_id: newItemParentId,
-        mime_type: "text/markdown",
+        mime_type: inferMimeTypeForNewDocument(title),
       });
       setNewFileDialogOpen(false);
       setDialogInput("");
@@ -473,7 +521,7 @@ export function FileExplorerPanel() {
       <SimpleInputDialog
         open={newFileDialogOpen}
         title="Nuevo archivo"
-        placeholder="Nombre del archivo (ej: notas.md)"
+        placeholder="Nombre del archivo (ej: notas.md, página.html)"
         value={dialogInput}
         onChange={setDialogInput}
         onConfirm={handleCreateDocument}
@@ -506,6 +554,13 @@ function NodeRenderer({
     : node.data.mimeType?.includes("html")
       ? FileText
       : File;
+
+  const displayMimeExt =
+    !isFolder &&
+    !node.isEditing &&
+    !titleLooksLikeWithFileExtension(node.data.name)
+      ? displayOnlyExtensionFromMime(node.data.mimeType)
+      : "";
 
   return (
     <div
@@ -551,7 +606,12 @@ function NodeRenderer({
           onClick={(e) => e.stopPropagation()}
         />
       ) : (
-        <span className="min-w-0 flex-1 truncate">{node.data.name}</span>
+        <span className="min-w-0 flex-1 flex min-h-0 items-center gap-0 overflow-hidden">
+          <span className="min-w-0 truncate">{node.data.name}</span>
+          {displayMimeExt ? (
+            <span className="shrink-0 text-muted-foreground">{displayMimeExt}</span>
+          ) : null}
+        </span>
       )}
     </div>
   );

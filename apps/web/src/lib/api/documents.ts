@@ -49,6 +49,7 @@ export async function fetchDocumentContent(
   return res.text();
 }
 
+/** Crea un documento en Storage + fila `documents`. `mime_type` rige el Content-Type (p. ej. `text/html`, `text/markdown`); el explorador lo infiere del título (.html → HTML). */
 export async function createDocument(
   tenantId: string,
   opts: {
