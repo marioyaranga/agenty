@@ -1,13 +1,13 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { AssistantRuntimeProvider, useAssistantRuntime } from "@assistant-ui/react";
 import { useWorkspace } from "@/lib/contexts/workspace-context";
+import { useChatThreads } from "@/lib/contexts/chat-thread-context";
 import { useWorkyAiRuntime } from "@/lib/assistant-ui/workyai-runtime";
 import { Thread } from "@/components/assistant-ui/thread";
 import { ChatHeader } from "@/components/chat/chat-header";
 import { ViewerBridge } from "@/components/chat/viewer-bridge";
-import type { ThreadItem } from "@/lib/assistant-ui/threads-api";
 import type { TenantOption } from "@/lib/types/tenant";
 
 export function ChatPageClient({ tenants }: { tenants: TenantOption[] }) {
@@ -28,55 +28,61 @@ export function ChatPageClient({ tenants }: { tenants: TenantOption[] }) {
 
 function ChatInner({ tenantId }: { tenantId: string }) {
   const { runtime, threadIdRef } = useWorkyAiRuntime(tenantId);
-  const [activeThread, setActiveThread] = useState<ThreadItem | null>(null);
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <ChatWithRuntime
-        tenantId={tenantId}
-        threadIdRef={threadIdRef}
-        activeThread={activeThread}
-        setActiveThread={setActiveThread}
-      />
+      <ChatWithRuntime tenantId={tenantId} threadIdRef={threadIdRef} />
     </AssistantRuntimeProvider>
   );
 }
 
-type InnerProps = {
-  tenantId: string;
-  threadIdRef: React.MutableRefObject<string | null>;
-  activeThread: ThreadItem | null;
-  setActiveThread: (t: ThreadItem | null) => void;
-};
-
 function ChatWithRuntime({
   tenantId,
   threadIdRef,
-  activeThread,
-  setActiveThread,
-}: InnerProps) {
+}: {
+  tenantId: string;
+  threadIdRef: React.MutableRefObject<string | null>;
+}) {
   const runtime = useAssistantRuntime();
+  const { activeThreadId, setActiveThreadId, refresh } = useChatThreads();
+  const prevActiveThreadId = useRef(activeThreadId);
+
+  // Cuando el contexto global cambia el thread (desde el sidebar), sincronizar el runtime.
+  useEffect(() => {
+    if (prevActiveThreadId.current === activeThreadId) return;
+    prevActiveThreadId.current = activeThreadId;
+    threadIdRef.current = activeThreadId;
+    runtime.switchToNewThread();
+  }, [activeThreadId, runtime, threadIdRef]);
 
   const handleNewChat = useCallback(() => {
+    setActiveThreadId(null);
     threadIdRef.current = null;
-    setActiveThread(null);
     runtime.switchToNewThread();
-  }, [runtime, threadIdRef, setActiveThread]);
+  }, [runtime, threadIdRef, setActiveThreadId]);
 
   const handleSelectThread = useCallback(
-    (thread: ThreadItem) => {
-      threadIdRef.current = thread.id;
-      setActiveThread(thread);
+    (threadId: string) => {
+      setActiveThreadId(threadId);
+      threadIdRef.current = threadId;
       runtime.switchToNewThread();
     },
-    [runtime, threadIdRef, setActiveThread],
+    [runtime, threadIdRef, setActiveThreadId],
   );
+
+  // Refrescar lista de threads tras cada run completado.
+  useEffect(() => {
+    const unsub = runtime.thread.subscribe(() => {
+      void refresh();
+    });
+    return unsub;
+  }, [runtime, refresh]);
 
   return (
     <div className="flex h-full flex-col">
       <ChatHeader
         tenantId={tenantId}
-        activeThread={activeThread}
+        activeThreadId={activeThreadId}
         onSelectThread={handleSelectThread}
         onNewChat={handleNewChat}
       />

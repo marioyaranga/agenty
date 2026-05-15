@@ -85,6 +85,363 @@ def _sanitize_storage_filename(filename: str) -> str:
     return base[:180]
 
 
+@bp.get("/tenants/<tenant_id>/documents")
+def list_documents(tenant_id: str):
+    """Lista documentos del tenant (server-side, para el agente y el explorador)."""
+    claims, err = require_bearer_jwt()
+    if err:
+        return err
+    user_id = str(claims.get("sub", ""))
+
+    tid, err = parse_uuid(tenant_id, "tenant_id")
+    if err:
+        return err
+    tenant_id = tid
+
+    _, err = require_matching_tenant_header(tenant_id)
+    if err:
+        return err
+
+    client = admin_supabase_client()
+    role = membership_role(client, tenant_id, user_id)
+    if not role:
+        return jsonify({"error": "Sin acceso a este espacio"}), 403
+
+    folder_id = request.args.get("folder_id") or None
+    q = (
+        client.table("documents")
+        .select(
+            "id, folder_id, title, mime_type, size_bytes, "
+            "index_status, created_by, created_at, updated_at"
+        )
+        .eq("tenant_id", tenant_id)
+    )
+    if folder_id:
+        q = q.eq("folder_id", folder_id)
+    else:
+        is_null = request.args.get("root")
+        if is_null == "true":
+            q = q.is_("folder_id", "null")
+
+    res = q.order("title").execute()
+    return jsonify({"documents": res.data or []}), 200
+
+
+@bp.post("/tenants/<tenant_id>/documents/create")
+def create_document_json(tenant_id: str):
+    """Crea un documento vacío o con contenido vía JSON (sin multipart).
+
+    Body: { title, folder_id?, content?, mime_type? }
+    """
+    claims, err = require_bearer_jwt()
+    if err:
+        return err
+    user_id = str(claims.get("sub", ""))
+
+    tid, err = parse_uuid(tenant_id, "tenant_id")
+    if err:
+        return err
+    tenant_id = tid
+
+    _, err = require_matching_tenant_header(tenant_id)
+    if err:
+        return err
+
+    client = admin_supabase_client()
+    role = membership_role(client, tenant_id, user_id)
+    if not role or role not in EDITOR_ROLES:
+        return jsonify({"error": "Se requiere rol editor, admin u owner"}), 403
+
+    body = request.get_json(silent=True) or {}
+    title = (body.get("title") or "").strip()
+    if not title or len(title) > 500:
+        return jsonify({"error": "title inválido (1–500 caracteres)"}), 400
+
+    mime_raw = (body.get("mime_type") or "text/markdown").strip()
+    mime = mime_raw.split(";")[0].strip() or "text/markdown"
+
+    content_str = body.get("content") or ""
+    if isinstance(content_str, str):
+        raw = content_str.encode("utf-8")
+    else:
+        raw = b""
+
+    max_bytes = _max_upload_bytes()
+    if len(raw) > max_bytes:
+        return jsonify({"error": "Contenido demasiado grande"}), 413
+
+    folder_id = body.get("folder_id") or None
+    if folder_id:
+        fid, err = parse_uuid(str(folder_id), "folder_id")
+        if err:
+            return err
+        folder_id = fid
+
+    document_id = str(uuid.uuid4())
+    safe_name = _sanitize_storage_filename(title)
+    storage_path = f"{tenant_id}/{document_id}/{safe_name}"
+
+    storage = client.storage.from_(BUCKET_ID)
+    try:
+        from storage3.exceptions import StorageApiError  # noqa: PLC0415
+        storage.upload(
+            storage_path,
+            raw,
+            file_options={"content-type": mime, "upsert": "false"},
+        )
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": "Fallo al subir a Storage", "detail": str(exc)}), 502
+
+    row: dict[str, Any] = {
+        "id": document_id,
+        "tenant_id": tenant_id,
+        "created_by": user_id,
+        "title": title,
+        "storage_path": storage_path,
+        "mime_type": mime,
+        "size_bytes": len(raw),
+        "index_status": _index_status_for_mime(mime),
+        "index_error": None,
+    }
+    if folder_id:
+        row["folder_id"] = folder_id
+
+    try:
+        ins = client.table("documents").insert(row).execute()
+    except Exception as exc:  # noqa: BLE001
+        try:
+            storage.remove([storage_path])
+        except Exception:  # noqa: BLE001
+            pass
+        return jsonify({"error": "Fallo al guardar metadatos", "detail": str(exc)}), 502
+
+    final_row: dict[str, Any] = (ins.data or [row])[0]
+
+    ran_markdown_index = False
+    if str(final_row.get("index_status", "")) == "pending":
+        ran_markdown_index = True
+        status, idx_err = sync_index_markdown_document(
+            client,
+            tenant_id=tenant_id,
+            document_id=str(final_row["id"]),
+            storage_path=str(final_row["storage_path"]),
+            mime_type=mime,
+        )
+        err_s = truncate_index_error(idx_err)
+        try:
+            up = (
+                client.table("documents")
+                .update({"index_status": status, "index_error": err_s})
+                .eq("id", str(final_row["id"]))
+                .eq("tenant_id", tenant_id)
+                .select(
+                    "id, tenant_id, folder_id, created_by, title, storage_path, mime_type, "
+                    "size_bytes, index_status, index_error, created_at, updated_at"
+                )
+                .execute()
+            )
+            updated = first_dict_from_execute(up)
+            if updated:
+                final_row = updated
+        except Exception:  # noqa: BLE001
+            final_row["index_status"] = status
+            final_row["index_error"] = err_s
+
+    if ran_markdown_index:
+        notify_document_index_outcome(
+            client,
+            tenant_id=tenant_id,
+            created_by=str(final_row.get("created_by") or "") or None,
+            document_id=str(final_row.get("id", document_id)),
+            title=str(final_row.get("title") or title),
+            index_status=str(final_row.get("index_status", "")),
+            index_error=str(final_row.get("index_error") or "") or None,
+        )
+
+    record_audit(
+        client,
+        tenant_id=tenant_id,
+        actor_user_id=user_id,
+        event_type="document.created",
+        payload={
+            "document_id": str(final_row.get("id", document_id)),
+            "title": title[:200],
+            "mime_type": mime,
+            "index_status": str(final_row.get("index_status", "")),
+        },
+    )
+
+    return jsonify(final_row), 201
+
+
+@bp.patch("/tenants/<tenant_id>/documents/<document_id>")
+def update_document(tenant_id: str, document_id: str):
+    """Actualiza metadatos y/o contenido de un documento.
+
+    Body: { title?, folder_id?, content? }
+    Si viene `content`, reemplaza el blob en Storage y re-indexa si es Markdown.
+    """
+    claims, err = require_bearer_jwt()
+    if err:
+        return err
+    user_id = str(claims.get("sub", ""))
+
+    tid, err = parse_uuid(tenant_id, "tenant_id")
+    if err:
+        return err
+    tenant_id = tid
+
+    did, err = parse_uuid(document_id, "document_id")
+    if err:
+        return err
+    document_id = did
+
+    _, err = require_matching_tenant_header(tenant_id)
+    if err:
+        return err
+
+    client = admin_supabase_client()
+    role = membership_role(client, tenant_id, user_id)
+    if not role or role not in EDITOR_ROLES:
+        return jsonify({"error": "Se requiere rol editor, admin u owner"}), 403
+
+    res = (
+        client.table("documents")
+        .select(
+            "id, tenant_id, folder_id, created_by, title, storage_path, "
+            "mime_type, size_bytes, index_status, index_error, created_at, updated_at"
+        )
+        .eq("id", document_id)
+        .eq("tenant_id", tenant_id)
+        .limit(1)
+        .execute()
+    )
+    rows: list[dict[str, Any]] = res.data or []
+    if not rows:
+        return jsonify({"error": "Documento no encontrado"}), 404
+
+    doc = rows[0]
+    body = request.get_json(silent=True) or {}
+    meta_updates: dict[str, Any] = {}
+    content_changed = False
+
+    if "title" in body:
+        new_title = (body["title"] or "").strip()
+        if not new_title or len(new_title) > 500:
+            return jsonify({"error": "title inválido (1–500 caracteres)"}), 400
+        meta_updates["title"] = new_title
+
+    if "folder_id" in body:
+        new_folder = body["folder_id"] or None
+        if new_folder:
+            fid, err = parse_uuid(str(new_folder), "folder_id")
+            if err:
+                return err
+            new_folder = fid
+        meta_updates["folder_id"] = new_folder
+
+    if "content" in body:
+        content_str = body["content"] or ""
+        if not isinstance(content_str, str):
+            return jsonify({"error": "content debe ser string"}), 400
+        raw = content_str.encode("utf-8")
+        max_bytes = _max_upload_bytes()
+        if len(raw) > max_bytes:
+            return jsonify({"error": "Contenido demasiado grande"}), 413
+
+        mime = str(doc.get("mime_type") or "text/markdown")
+        storage_path = str(doc["storage_path"])
+        storage = client.storage.from_(BUCKET_ID)
+        try:
+            storage.upload(
+                storage_path,
+                raw,
+                file_options={"content-type": mime, "upsert": "true"},
+            )
+        except Exception as exc:  # noqa: BLE001
+            return jsonify({"error": "Fallo al actualizar Storage", "detail": str(exc)}), 502
+
+        meta_updates["size_bytes"] = len(raw)
+        if is_real_markdown(mime):
+            meta_updates["index_status"] = "pending"
+            meta_updates["index_error"] = None
+        content_changed = True
+
+    if not meta_updates and not content_changed:
+        return jsonify({"error": "Sin campos a actualizar (title, folder_id, content)"}), 400
+
+    try:
+        up = (
+            client.table("documents")
+            .update(meta_updates)
+            .eq("id", document_id)
+            .eq("tenant_id", tenant_id)
+            .select(
+                "id, tenant_id, folder_id, created_by, title, storage_path, "
+                "mime_type, size_bytes, index_status, index_error, created_at, updated_at"
+            )
+            .execute()
+        )
+        final_row = first_dict_from_execute(up) or doc
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": "Fallo al actualizar metadatos", "detail": str(exc)}), 502
+
+    ran_markdown_index = False
+    if content_changed and is_real_markdown(str(doc.get("mime_type") or "")):
+        ran_markdown_index = True
+        status, idx_err = sync_index_markdown_document(
+            client,
+            tenant_id=tenant_id,
+            document_id=document_id,
+            storage_path=str(doc["storage_path"]),
+            mime_type=str(doc.get("mime_type") or ""),
+        )
+        err_s = truncate_index_error(idx_err)
+        try:
+            up2 = (
+                client.table("documents")
+                .update({"index_status": status, "index_error": err_s})
+                .eq("id", document_id)
+                .eq("tenant_id", tenant_id)
+                .select(
+                    "id, tenant_id, folder_id, created_by, title, storage_path, "
+                    "mime_type, size_bytes, index_status, index_error, created_at, updated_at"
+                )
+                .execute()
+            )
+            updated2 = first_dict_from_execute(up2)
+            if updated2:
+                final_row = updated2
+        except Exception:  # noqa: BLE001
+            final_row["index_status"] = status
+            final_row["index_error"] = err_s
+
+    if ran_markdown_index:
+        notify_document_index_outcome(
+            client,
+            tenant_id=tenant_id,
+            created_by=str(final_row.get("created_by") or "") or None,
+            document_id=document_id,
+            title=str(final_row.get("title") or ""),
+            index_status=str(final_row.get("index_status", "")),
+            index_error=str(final_row.get("index_error") or "") or None,
+        )
+
+    record_audit(
+        client,
+        tenant_id=tenant_id,
+        actor_user_id=user_id,
+        event_type="document.updated",
+        payload={
+            "document_id": document_id,
+            "fields": list(meta_updates.keys()),
+            "content_changed": content_changed,
+        },
+    )
+
+    return jsonify(final_row), 200
+
+
 @bp.post("/tenants/<tenant_id>/documents")
 def upload_document(tenant_id: str):
     claims, err = require_bearer_jwt()

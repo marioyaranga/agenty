@@ -1,4 +1,9 @@
-"""Grafo LangGraph: recuperación con reintento (máx. 2), reescritura de consulta y ramas condicionales."""
+"""Grafo LangGraph: recuperación con reintento (máx. 2), reescritura de consulta y ramas condicionales.
+
+Fase 10: soporte de function calling de Gemini para CRUD de archivos/carpetas.
+El nodo `generate` detecta si el modelo emitió una tool call; si es así, pasa por
+`execute_tool` que la despacha y vuelve a `generate` con el resultado.
+"""
 
 from __future__ import annotations
 
@@ -8,20 +13,27 @@ from typing import Any, Literal, TypedDict
 from langgraph.graph import END, START, StateGraph
 from supabase import Client
 
-from agent.gemini_rag import answer_with_gemini, rewrite_query_for_retrieval
+from agent.gemini_rag import answer_with_gemini_with_tools, rewrite_query_for_retrieval
 from agent.persistence import insert_agent_step
+from agent.tools import GEMINI_TOOL_DECLARATIONS, dispatch_tool
 from agent.tracing import traced_graph_node
 from rag.match_chunks import match_document_chunks
 
 
 class AgentGraphState(TypedDict, total=False):
     tenant_id: str
+    user_id: str
     message: str
     effective_query: str
     retrieval_count: int
     matches: list[dict[str, Any]]
     answer: str
     citations: list[dict[str, Any]]
+    # Tool calling state
+    pending_tool_name: str | None
+    pending_tool_args: dict[str, Any] | None
+    tool_results: list[dict[str, Any]]
+    tool_iteration: int
 
 
 def _read_float(name: str, default: float) -> float:
@@ -69,13 +81,15 @@ def build_agent_graph(
     *,
     gemini_api_key: str,
     chat_model: str,
+    user_id: str = "",
     langsmith_parent: Any | None = None,
 ) -> Any:
-    """Compila el grafo con routing condicional y hasta dos recuperaciones semánticas."""
+    """Compila el grafo con routing condicional, recuperación semántica y tool calling."""
     min_rpc_sim = _read_float("AGENT_MIN_SIMILARITY", 0.22)
     min_ok_sim = _read_float("AGENT_CONTEXT_OK_MIN_SIMILARITY", 0.24)
     match_count = _read_int("AGENT_MATCH_COUNT", 10)
     max_attempts = min(2, max(1, _read_int("AGENT_MAX_RETRIEVAL_ATTEMPTS", 2)))
+    max_tool_iters = min(10, max(1, _read_int("AGENT_MAX_TOOL_ITERATIONS", 5)))
 
     step_idx = [0]
 
@@ -193,38 +207,112 @@ def build_agent_graph(
         return {"answer": text, "citations": []}
 
     def generate(state: AgentGraphState) -> dict[str, Any]:
+        tool_results = list(state.get("tool_results") or [])
         with traced_graph_node(
             langsmith_parent,
             name="agent.generate",
-            inputs={"citation_candidates": len(state.get("matches") or [])},
+            inputs={
+                "citation_candidates": len(state.get("matches") or []),
+                "tool_results_count": len(tool_results),
+            },
         ) as (_, holder):
-            text, cites = answer_with_gemini(
+            result = answer_with_gemini_with_tools(
                 str(state.get("message") or ""),
                 list(state.get("matches") or []),
+                tool_results=tool_results,
                 api_key=gemini_api_key,
                 model=chat_model,
             )
+            tool_name = result.get("tool_name")
+            tool_args = result.get("tool_args")
+
+            if tool_name:
+                insert_agent_step(
+                    client,
+                    run_id=run_id,
+                    step_key="generate",
+                    step_index=_next_step_index(),
+                    payload={"model": chat_model, "tool_call": tool_name},
+                )
+                holder["outputs"] = {"tool_call": tool_name}
+                return {
+                    "pending_tool_name": tool_name,
+                    "pending_tool_args": tool_args or {},
+                }
+
+            text = str(result.get("text") or "")
+            cites = list(result.get("citations") or [])
             insert_agent_step(
                 client,
                 run_id=run_id,
                 step_key="generate",
                 step_index=_next_step_index(),
-                payload={
-                    "model": chat_model,
-                    "citations_count": len(cites),
-                },
+                payload={"model": chat_model, "citations_count": len(cites)},
             )
             holder["outputs"] = {
                 "answer_chars": len(text),
                 "citations_count": len(cites),
             }
-        return {"answer": text, "citations": cites}
+        return {"answer": text, "citations": cites, "pending_tool_name": None}
+
+    def route_after_generate(
+        state: AgentGraphState,
+    ) -> Literal["execute_tool", "__end__"]:
+        if state.get("pending_tool_name"):
+            iters = int(state.get("tool_iteration") or 0)
+            if iters < max_tool_iters:
+                return "execute_tool"
+        return "__end__"
+
+    def execute_tool(state: AgentGraphState) -> dict[str, Any]:
+        tool_name = str(state.get("pending_tool_name") or "")
+        tool_args = dict(state.get("pending_tool_args") or {})
+        iters = int(state.get("tool_iteration") or 0)
+
+        with traced_graph_node(
+            langsmith_parent,
+            name=f"agent.{tool_name}",
+            inputs={"tool_name": tool_name, "args_keys": list(tool_args.keys())},
+        ) as (_, holder):
+            result = dispatch_tool(
+                client,
+                tenant_id=str(state.get("tenant_id") or ""),
+                user_id=user_id,
+                tool_name=tool_name,
+                tool_args=tool_args,
+            )
+            _VALID_TOOL_KEYS = frozenset({
+                "tool_create_folder", "tool_create_document",
+                "tool_update_document_content", "tool_rename",
+                "tool_move", "tool_delete_document", "tool_delete_folder",
+            })
+            safe_key = tool_name if tool_name in _VALID_TOOL_KEYS else "tool_create_folder"
+            insert_agent_step(
+                client,
+                run_id=run_id,
+                step_key=safe_key,
+                step_index=_next_step_index(),
+                payload={"tool_name": tool_name, "ok": result.get("ok"), **{
+                    k: v for k, v in result.items() if k not in ("ok",)
+                }},
+            )
+            holder["outputs"] = {"ok": result.get("ok"), "tool_name": tool_name}
+
+        prev_results = list(state.get("tool_results") or [])
+        prev_results.append({"tool_name": tool_name, "result": result})
+        return {
+            "tool_results": prev_results,
+            "tool_iteration": iters + 1,
+            "pending_tool_name": None,
+            "pending_tool_args": None,
+        }
 
     g = StateGraph(AgentGraphState)
     g.add_node("retrieve", retrieve)
     g.add_node("rewrite_query", rewrite_query)
     g.add_node("respond_no_context", respond_no_context)
     g.add_node("generate", generate)
+    g.add_node("execute_tool", execute_tool)
     g.add_edge(START, "retrieve")
     g.add_conditional_edges(
         "retrieve",
@@ -236,6 +324,14 @@ def build_agent_graph(
         },
     )
     g.add_edge("rewrite_query", "retrieve")
-    g.add_edge("generate", END)
+    g.add_conditional_edges(
+        "generate",
+        route_after_generate,
+        {
+            "execute_tool": "execute_tool",
+            "__end__": END,
+        },
+    )
+    g.add_edge("execute_tool", "generate")
     g.add_edge("respond_no_context", END)
     return g.compile()

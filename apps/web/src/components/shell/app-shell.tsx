@@ -9,6 +9,7 @@ import {
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { WorkspaceProvider } from "@/lib/contexts/workspace-context";
 import { ViewerProvider } from "@/lib/contexts/viewer-context";
+import { ChatThreadProvider } from "@/lib/contexts/chat-thread-context";
 import { SidebarLeft } from "@/components/shell/sidebar-left";
 import { TopBar } from "@/components/shell/topbar";
 import { MarkdownViewerPanel } from "@/components/viewer/markdown-viewer-panel";
@@ -30,6 +31,7 @@ export function AppShell({
   return (
     <TooltipProvider>
       <WorkspaceProvider tenants={tenants}>
+        <ChatThreadProvider>
         <ViewerProvider>
           <SidebarProvider className="h-full min-h-0">
             <SidebarLeft showAudit={showAudit} />
@@ -54,6 +56,7 @@ export function AppShell({
             </div>
           </SidebarProvider>
         </ViewerProvider>
+        </ChatThreadProvider>
       </WorkspaceProvider>
     </TooltipProvider>
   );

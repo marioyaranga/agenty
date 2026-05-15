@@ -378,9 +378,14 @@ def agent_chat(tenant_id: str):
                 run_id,
                 gemini_api_key=gemini_key,
                 chat_model=chat_model,
+                user_id=user_id,
                 langsmith_parent=ls_root,
             )
-            final = graph.invoke({"tenant_id": tenant_id, "message": message})
+            final = graph.invoke({
+                "tenant_id": tenant_id,
+                "user_id": user_id,
+                "message": message,
+            })
 
             answer = str(final.get("answer") or "")
             citations = list(final.get("citations") or [])
