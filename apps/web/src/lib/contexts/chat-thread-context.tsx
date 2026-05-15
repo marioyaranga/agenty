@@ -22,6 +22,7 @@ type ChatThreadState = {
   loading: boolean;
   setActiveThreadId: (id: string | null) => void;
   refresh: () => Promise<void>;
+  upsertThread: (item: ThreadItem) => void;
   renameActiveThread: (title: string) => Promise<void>;
   removeThread: (id: string) => Promise<void>;
 };
@@ -55,6 +56,18 @@ export function ChatThreadProvider({ children }: { children: React.ReactNode }) 
     void refresh();
   }, [activeTenantId, refresh]);
 
+  const upsertThread = useCallback((item: ThreadItem) => {
+    setThreads((prev) => {
+      const idx = prev.findIndex((t) => t.id === item.id);
+      if (idx !== -1) {
+        const next = [...prev];
+        next[idx] = item;
+        return next;
+      }
+      return [item, ...prev];
+    });
+  }, []);
+
   const renameActiveThread = useCallback(
     async (title: string) => {
       if (!activeTenantId || !activeThreadId) return;
@@ -84,6 +97,7 @@ export function ChatThreadProvider({ children }: { children: React.ReactNode }) 
         loading,
         setActiveThreadId,
         refresh,
+        upsertThread,
         renameActiveThread,
         removeThread,
       }}

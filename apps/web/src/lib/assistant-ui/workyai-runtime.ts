@@ -19,6 +19,7 @@ export type AgentRuntimeCallbacks = {
   onRunStart: () => void;
   onRunComplete: (turnIndex: number, steps: SeoSubagentStep[]) => void;
   onRunEnd: () => void;
+  onThreadUpdate?: (threadId: string) => void;
 };
 
 export function useWorkyAiRuntime(
@@ -101,6 +102,7 @@ export function useWorkyAiRuntime(
 
         const ok = body as WorkyAiResponse;
         threadIdRef.current = ok.thread_id;
+        callbacks?.onThreadUpdate?.(ok.thread_id);
         const steps = Array.isArray(ok.steps) ? ok.steps : [];
         callbacks?.onRunComplete(turnIndex, steps);
 

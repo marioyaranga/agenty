@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AssistantRuntimeProvider, useAssistantRuntime, type ThreadMessageLike } from "@assistant-ui/react";
+import { AssistantRuntimeProvider, type ThreadMessageLike } from "@assistant-ui/react";
 import { useWorkspace } from "@/lib/contexts/workspace-context";
 import { useChatThreads } from "@/lib/contexts/chat-thread-context";
 import { useWorkyAiRuntime } from "@/lib/assistant-ui/workyai-runtime";
@@ -56,7 +56,7 @@ export function ChatPageClient({ tenants }: { tenants: TenantOption[] }) {
 }
 
 function ChatManager({ tenantId }: { tenantId: string }) {
-  const { activeThreadId, setActiveThreadId, refresh } = useChatThreads();
+  const { activeThreadId, setActiveThreadId } = useChatThreads();
   // null = fetch en curso; objeto = listo para montar ChatInner con datos consistentes.
   const [hydrated, setHydrated] = useState<HydratedThread | null>({
     threadId: null,
@@ -104,7 +104,6 @@ function ChatManager({ tenantId }: { tenantId: string }) {
       tenantId={tenantId}
       activeThreadId={hydrated.threadId}
       initialMessages={hydrated.messages}
-      refresh={refresh}
       onNewChat={handleNewChat}
       onSelectThread={handleSelectThread}
     />
@@ -115,21 +114,38 @@ function ChatInner({
   tenantId,
   activeThreadId,
   initialMessages,
-  refresh,
   onNewChat,
   onSelectThread,
 }: {
   tenantId: string;
   activeThreadId: string | null;
   initialMessages: readonly ThreadMessageLike[];
-  refresh: () => void;
   onNewChat: () => void;
   onSelectThread: (threadId: string) => void;
 }) {
   const { onRunStart, onRunComplete, onRunEnd } = useSeoSteps();
-  const { runtime, threadIdRef } = useWorkyAiRuntime(
+  const { threads, upsertThread } = useChatThreads();
+
+  const handleThreadUpdate = useCallback(
+    (threadId: string) => {
+      if (threads.some((t) => t.id === threadId)) return;
+      getThread(tenantId, threadId)
+        .then((detail) =>
+          upsertThread({
+            id: detail.id,
+            title: detail.title,
+            created_at: detail.created_at,
+            updated_at: detail.updated_at,
+          }),
+        )
+        .catch(() => {});
+    },
+    [threads, tenantId, upsertThread],
+  );
+
+  const { runtime } = useWorkyAiRuntime(
     tenantId,
-    { onRunStart, onRunComplete, onRunEnd },
+    { onRunStart, onRunComplete, onRunEnd, onThreadUpdate: handleThreadUpdate },
     initialMessages,
     activeThreadId,
   );
@@ -139,8 +155,6 @@ function ChatInner({
       <ChatWithRuntime
         tenantId={tenantId}
         activeThreadId={activeThreadId}
-        threadIdRef={threadIdRef}
-        refresh={refresh}
         onNewChat={onNewChat}
         onSelectThread={onSelectThread}
       />
@@ -151,28 +165,14 @@ function ChatInner({
 function ChatWithRuntime({
   tenantId,
   activeThreadId,
-  threadIdRef,
-  refresh,
   onNewChat,
   onSelectThread,
 }: {
   tenantId: string;
   activeThreadId: string | null;
-  threadIdRef: React.MutableRefObject<string | null>;
-  refresh: () => void;
   onNewChat: () => void;
   onSelectThread: (threadId: string) => void;
 }) {
-  const runtime = useAssistantRuntime();
-
-  // Refrescar lista de threads tras cada run completado.
-  useEffect(() => {
-    const unsub = runtime.thread.subscribe(() => {
-      void refresh();
-    });
-    return unsub;
-  }, [runtime, refresh]);
-
   return (
     <div className="flex h-full flex-col">
       <ChatHeader
