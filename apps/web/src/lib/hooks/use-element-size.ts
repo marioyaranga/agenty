@@ -1,28 +1,28 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 /** Mide el ancho y alto en px del elemento referenciado (ResizeObserver). */
 export function useElementSize<T extends HTMLElement>() {
-  const ref = useRef<T | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
+  const observerRef = useRef<ResizeObserver | null>(null);
 
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
+  const ref = useCallback((node: T | null) => {
+    observerRef.current?.disconnect();
+    observerRef.current = null;
+    if (!node) return;
 
     const update = () => {
-      const { width, height } = el.getBoundingClientRect();
       setSize({
-        width: Math.max(0, Math.floor(width)),
-        height: Math.max(0, Math.floor(height)),
+        width: Math.max(0, Math.floor(node.clientWidth)),
+        height: Math.max(0, Math.floor(node.clientHeight)),
       });
     };
 
     update();
     const observer = new ResizeObserver(update);
-    observer.observe(el);
-    return () => observer.disconnect();
+    observer.observe(node);
+    observerRef.current = observer;
   }, []);
 
   return { ref, width: size.width, height: size.height };

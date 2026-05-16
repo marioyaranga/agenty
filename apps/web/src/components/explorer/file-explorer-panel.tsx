@@ -538,8 +538,8 @@ export function FileExplorerPanel() {
         </div>
       </div>
 
-      <SidebarGroupContent className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div ref={treeViewportRef} className="min-h-0 flex-1 overflow-hidden">
+      <SidebarGroupContent className="relative min-h-0 flex-1 overflow-hidden">
+        <div ref={treeViewportRef} className="absolute inset-0 overflow-hidden">
           {loading && treeData.length === 0 ? (
             <SidebarMenu className="gap-1 px-2 py-2">
               <SidebarMenuSkeleton showIcon />
@@ -552,14 +552,14 @@ export function FileExplorerPanel() {
                 Sin archivos. Creá una carpeta o subí un documento.
               </p>
             </div>
-          ) : treeWidth > 0 && treeHeight > 0 ? (
+          ) : (
             <Tree<TreeNode>
               data={treeData}
               onMove={handleMove}
               onRename={handleRename}
               onActivate={handleOpenDocument}
-              width={treeWidth}
-              height={treeHeight}
+              width={treeWidth > 0 ? treeWidth : 240}
+              height={treeHeight > 0 ? treeHeight : 200}
               indent={12}
               rowHeight={28}
             >
@@ -573,7 +573,7 @@ export function FileExplorerPanel() {
                 />
               )}
             </Tree>
-          ) : null}
+          )}
         </div>
       </SidebarGroupContent>
 
