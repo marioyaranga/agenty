@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, type MutableRefObject } from "react";
+import { useEffect, useMemo, useRef, type MutableRefObject } from "react";
 import { useLocalRuntime, type ChatModelAdapter, type ThreadMessageLike } from "@assistant-ui/react";
 import { createClient } from "@/lib/supabase/client";
 import type { AgentRunStep } from "@/lib/types/agent-steps";
@@ -55,9 +55,18 @@ export function useWorkyAiRuntime(
   mentionsRef?: MutableRefObject<Mention[]>,
 ) {
   const threadIdRef = useRef<string | null>(initialThreadId ?? null);
+  const callbacksRef = useRef(callbacks);
+  callbacksRef.current = callbacks;
 
-  const adapter: ChatModelAdapter = {
+  useEffect(() => {
+    threadIdRef.current = initialThreadId ?? null;
+  }, [initialThreadId]);
+
+  // useLocalRuntime reaplica opciones en cada render; un adapter nuevo dispara
+  // __internal_load() en bucle y React error #185 (max update depth).
+  const adapter = useMemo((): ChatModelAdapter => ({
     async *run({ messages, abortSignal }) {
+      const callbacks = callbacksRef.current;
       const last = messages.at(-1);
       const userText =
         last?.content
@@ -67,7 +76,7 @@ export function useWorkyAiRuntime(
 
       const turnIndex = messages.filter((m) => m.role === "assistant").length;
 
-      callbacks?.onRunStart();
+      callbacks?.onRunStart?.();
 
       const supabase = createClient();
       const { data: sessionData } = await supabase.auth.getSession();
@@ -167,7 +176,7 @@ export function useWorkyAiRuntime(
                 if (mentionsRef) mentionsRef.current = [];
                 const steps = Array.isArray(event.steps) ? event.steps : [];
                 const webSources = Array.isArray(event.web_sources) ? event.web_sources : [];
-                callbacks?.onRunComplete(turnIndex, steps);
+                callbacks?.onRunComplete?.(turnIndex, steps);
                 yield {
                   content: [{ type: "text" as const, text: event.answer }],
                   metadata: {
@@ -189,10 +198,10 @@ export function useWorkyAiRuntime(
           reader.releaseLock?.();
         }
       } finally {
-        callbacks?.onRunEnd();
+        callbacks?.onRunEnd?.();
       }
     },
-  };
+  }), [tenantId]);
 
   const runtime = useLocalRuntime(adapter, { initialMessages });
   return { runtime, threadIdRef };

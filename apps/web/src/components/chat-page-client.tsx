@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AssistantRuntimeProvider, type ThreadMessageLike } from "@assistant-ui/react";
 import { useWorkspace } from "@/lib/contexts/workspace-context";
@@ -177,12 +177,14 @@ function ChatInner({
   const { onRunStart, onRunComplete, onRunEnd, onStepProgress, onToolProgress } =
     useAgentSteps();
   const { threads, upsertThread } = useChatThreads();
+  const threadsRef = useRef(threads);
+  threadsRef.current = threads;
   const { mentionsRef, clearMentions } = useMentions();
 
   const handleThreadUpdate = useCallback(
     (threadId: string) => {
       onNewThread(threadId);
-      if (threads.some((t) => t.id === threadId)) return;
+      if (threadsRef.current.some((t) => t.id === threadId)) return;
       getThread(tenantId, threadId)
         .then((detail) =>
           upsertThread({
@@ -194,7 +196,7 @@ function ChatInner({
         )
         .catch(() => {});
     },
-    [threads, tenantId, upsertThread, onNewThread],
+    [tenantId, upsertThread, onNewThread],
   );
 
   const handleRunComplete = useCallback(
