@@ -1,4 +1,4 @@
-"""Tools SEO para function calling de Gemini (volumen y SERP vía DataForSEO).
+"""Tools SEO para function calling de Gemini (volumen, SERP y ranked keywords vía DataForSEO).
 
 Reusan la infra de seo/ y se integran al loop generate↔execute_tool del agente RAG.
 Los resultados incluyen seo=True y phase="dataforseo" para que format_seo_steps_for_ui
@@ -12,15 +12,15 @@ from typing import Any
 from supabase import Client
 
 from routes.documents import EDITOR_ROLES
-from seo.dataforseo_keywords_for_url import fetch_keywords_for_urls
+from seo.dataforseo_ranked_keywords import fetch_ranked_keywords_for_page, normalize_page_target
 from seo.dataforseo_serp import fetch_serp_google_organic_advanced
 from seo.dataforseo_volume import fetch_search_volume_live
 from seo.seo_cache import (
-    TTL_KFU_SECONDS,
+    TTL_RANKED_KW_SECONDS,
     TTL_SERP_SECONDS,
     TTL_VOLUME_SECONDS,
     get_cached,
-    make_kfu_key,
+    make_ranked_kw_key,
     make_serp_key,
     make_volume_key,
     set_cached,
@@ -117,28 +117,26 @@ def tool_seo_search_volume(
     }
 
 
-def _kw_table_lines(rows: list[dict[str, Any]]) -> list[str]:
+def _ranked_kw_table_lines(rows: list[dict[str, Any]]) -> list[str]:
     lines = [
-        "| # | Keyword | Volumen mensual | CPC | Competencia |",
-        "| --- | --- | ---: | ---: | ---: |",
+        "| # | Keyword | Posición orgánica | Volumen mensual |",
+        "| --- | --- | ---: | ---: |",
     ]
     for i, r in enumerate(rows, 1):
         kw = r.get("keyword") or ""
+        pos = r.get("position")
+        pos_s = "—" if pos is None else str(pos)
         sv = "—" if r.get("search_volume") is None else str(r["search_volume"])
-        cpc_v = r.get("cpc")
-        cpc = "—" if cpc_v is None else f"${float(cpc_v):.2f}"
-        comp_v = r.get("competition")
-        comp = "—" if comp_v is None else f"{float(comp_v):.2f}"
-        lines.append(f"| {i} | {kw} | {sv} | {cpc} | {comp} |")
+        lines.append(f"| {i} | {kw} | {pos_s} | {sv} |")
     return lines
 
 
-def tool_seo_keywords_for_url(
+def tool_seo_ranked_keywords_for_url(
     client: Client,
     *,
     tenant_id: str,
     user_id: str,
-    urls: list[str],
+    url: str,
     limit: int | None = None,
     location_code: int | None = None,
     language_code: str | None = None,
@@ -165,67 +163,119 @@ def tool_seo_keywords_for_url(
     defaults = get_effective_seo_defaults(client, tenant_id)
     loc = location_code if location_code is not None else defaults["location_code"]
     lang = language_code if language_code else defaults["language_code"]
-    lim = limit if limit is not None else 10
+    lim = limit if limit is not None else 20
 
-    clean_urls = [u.strip() for u in (urls or []) if u.strip()][:3]
-    if not clean_urls:
-        return {"ok": False, "error": "Se requiere al menos una URL o dominio."}
+    page_target = normalize_page_target(url or "")
+    if not page_target:
+        return {
+            "ok": False,
+            "error": (
+                "Se requiere la URL completa de la página (con https://), "
+                "no solo el dominio, para obtener rankings de esa URL específica."
+            ),
+        }
 
     try:
-        kfu_key = make_kfu_key(clean_urls, loc, lang, lim)
-        cached_map_hit = get_cached(client, tenant_id, kfu_key)
-        if cached_map_hit is not None:
-            result_map = cached_map_hit
+        cache_key = make_ranked_kw_key(page_target, loc, lang, lim)
+        cached_hit = get_cached(client, tenant_id, cache_key)
+        if cached_hit is not None:
+            result = cached_hit
             from_cache = True
         else:
-            result_map = fetch_keywords_for_urls(
-                login, password, clean_urls, location_code=loc, language_code=lang, limit_per_target=lim
+            result = fetch_ranked_keywords_for_page(
+                login,
+                password,
+                page_target,
+                location_code=loc,
+                language_code=lang,
+                limit=lim,
             )
-            set_cached(client, tenant_id, kfu_key, "keywords_for_url", result_map, TTL_KFU_SECONDS)
+            set_cached(
+                client, tenant_id, cache_key, "ranked_keywords", result, TTL_RANKED_KW_SECONDS
+            )
             from_cache = False
     except Exception as exc:  # noqa: BLE001
-        return {"ok": False, "error": f"Error DataForSEO keywords_for_url: {exc}"}
+        return {"ok": False, "error": f"Error DataForSEO ranked keywords: {exc}"}
+
+    rows = list(result.get("keywords") or [])
+    total_in_db = result.get("total_count")
 
     lines: list[str] = [
-        f"## Keywords por dominio ({len(clean_urls)} URL{'s' if len(clean_urls) > 1 else ''})",
+        "## Keywords orgánicas por URL (ranked keywords)",
         "",
-        f"**Configuración usada:** location_code={loc}, language_code={lang}, limit={lim} por URL.",
+        f"**Página:** `{page_target}`",
+        f"**Configuración usada:** location_code={loc}, language_code={lang}, "
+        f"límite={lim}, resultados={len(rows)}"
+        + (f" (total estimado en índice: {total_in_db})" if total_in_db is not None else "")
+        + ".",
         "",
     ]
-    keywords_summary: list[dict[str, Any]] = []
-    total_kw = 0
-
-    for target in clean_urls:
-        rows = result_map.get(target) or []
-        total_kw += len(rows)
-        lines.append(f"### `{target}`")
-        if rows:
-            lines.extend(_kw_table_lines(rows))
-            keywords_summary.extend(
-                {"target": target, "keyword": r.get("keyword"), "search_volume": r.get("search_volume")}
-                for r in rows
-            )
-        else:
-            lines.append("_Sin resultados para este dominio._")
-        lines.append("")
-
-    lines.append("_Datos: DataForSEO / Google Ads. Volúmenes son estimaciones mensuales._")
+    if rows:
+        lines.extend(_ranked_kw_table_lines(rows))
+    else:
+        lines.append("_Sin keywords orgánicas en vivo para esta URL en el mercado/idioma indicado._")
+    lines.extend(
+        [
+            "",
+            "_Datos: DataForSEO Labs (ranked keywords, orgánico). "
+            "Actualización semanal; posiciones son snapshot del índice, no tiempo real._",
+        ]
+    )
     markdown = "\n".join(lines).strip()
+
+    keywords_summary = [
+        {
+            "target": page_target,
+            "keyword": r.get("keyword"),
+            "position": r.get("position"),
+            "search_volume": r.get("search_volume"),
+        }
+        for r in rows[:50]
+    ]
 
     return {
         "ok": True,
         "seo": True,
         "phase": "dataforseo",
-        "mode": "keywords_for_url",
+        "mode": "ranked_keywords",
         "cached": from_cache,
         "markdown": markdown,
-        "keywords_summary": keywords_summary[:50],
-        "keyword_count": total_kw,
-        "target_urls": clean_urls,
-        "url_count": len(clean_urls),
+        "keywords_summary": keywords_summary,
+        "keyword_count": len(rows),
+        "target_url": page_target,
+        "total_count": total_in_db,
         "location_code": loc,
         "language_code": lang,
     }
+
+
+def tool_seo_keywords_for_url(
+    client: Client,
+    *,
+    tenant_id: str,
+    user_id: str,
+    urls: list[str] | None = None,
+    url: str | None = None,
+    limit: int | None = None,
+    location_code: int | None = None,
+    language_code: str | None = None,
+) -> dict[str, Any]:
+    """Alias retrocompatible: acepta `url` o el primer elemento de `urls`."""
+    page = (url or "").strip()
+    if not page and urls:
+        for candidate in urls:
+            page = str(candidate or "").strip()
+            if page:
+                break
+    return tool_seo_ranked_keywords_for_url(
+        client,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        url=page,
+        limit=limit,
+        location_code=location_code,
+        language_code=language_code,
+    )
 
 
 def tool_seo_serp_organic(

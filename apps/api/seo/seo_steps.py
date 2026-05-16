@@ -22,8 +22,12 @@ PHASE_LABELS: dict[str, tuple[str, str]] = {
         "Consulta resultados orgánicos en Google (live advanced).",
     ),
     "keywords_for_url": (
-        "Keywords por URL",
-        "Obtiene las keywords asociadas a un dominio o página (Google Ads).",
+        "Rankings por URL",
+        "Keywords orgánicas y posición para una página (Google Ads, legado).",
+    ),
+    "ranked_keywords": (
+        "Rankings por URL",
+        "Keywords orgánicas y posición para una URL (DataForSEO Labs).",
     ),
     "format": (
         "Respuesta",
@@ -65,11 +69,13 @@ def _detail_for_phase(phase: str, payload: dict[str, Any]) -> str:
         blocks = payload.get("serp_summary") or payload.get("blocks") or []
         n = len(blocks) if isinstance(blocks, list) else int(payload.get("block_count") or 0)
         return f"{n} SERP consultada(s)."
-    if phase == "keywords_for_url":
+    if phase in ("keywords_for_url", "ranked_keywords"):
         n = int(payload.get("keyword_count") or 0)
-        url_count = int(payload.get("url_count") or 1)
-        suffix = f"{url_count} URL{'s' if url_count > 1 else ''}"
-        return f"{n} keyword(s) para {suffix}."
+        target = str(payload.get("target_url") or payload.get("target_urls") or "")
+        if isinstance(payload.get("target_urls"), list) and payload["target_urls"]:
+            target = str(payload["target_urls"][0])
+        suffix = target[:80] + ("…" if len(target) > 80 else "") if target else "URL"
+        return f"{n} keyword(s) orgánicas para {suffix}."
     if phase == "format":
         n = int(payload.get("keyword_count") or 0)
         mode = str(payload.get("mode") or "")
@@ -102,10 +108,12 @@ def format_seo_steps_for_ui(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 payload.get("serp_summary") or payload.get("serp_block_count")
             ):
                 sub_phases.append("serp")
-            if mode == "keywords_for_url" and (
+            if mode in ("keywords_for_url", "ranked_keywords") and (
                 payload.get("keywords_summary") or payload.get("keyword_count")
             ):
-                sub_phases.append("keywords_for_url")
+                sub_phases.append(
+                    "ranked_keywords" if mode == "ranked_keywords" else "keywords_for_url"
+                )
             for sub in sub_phases:
                 if sub in seen_phases:
                     continue

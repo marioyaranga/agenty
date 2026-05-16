@@ -10,7 +10,7 @@ from supabase import Client
 
 TTL_VOLUME_SECONDS = 86_400   # 24 h — volumen Google Ads cambia mensualmente
 TTL_SERP_SECONDS   = 21_600   # 6 h  — SERP cambia más frecuentemente
-TTL_KFU_SECONDS    = 43_200   # 12 h — keywords for site
+TTL_RANKED_KW_SECONDS = 604_800  # 7 d — Labs ranked keywords (datos semanales)
 
 
 # ── Construcción de claves ────────────────────────────────────────────────────
@@ -28,9 +28,10 @@ def make_serp_key(keyword: str, location_code: int, language_code: str, depth: i
     return _sha(f"serp:{location_code}:{language_code.lower()}:{depth}:{keyword.lower().strip()}")
 
 
-def make_kfu_key(urls: list[str], location_code: int, language_code: str, limit: int) -> str:
-    sorted_urls = ",".join(sorted(u.lower().strip() for u in urls if u.strip()))
-    return _sha(f"kfu:{location_code}:{language_code.lower()}:{limit}:{sorted_urls}")
+def make_ranked_kw_key(page_url: str, location_code: int, language_code: str, limit: int) -> str:
+    return _sha(
+        f"ranked_kw:{location_code}:{language_code.lower()}:{limit}:{page_url.lower().strip()}"
+    )
 
 
 # ── Acceso a la tabla ─────────────────────────────────────────────────────────

@@ -274,7 +274,10 @@ def build_agent_graph(
         return "__end__"
 
     _SEO_TOOLS = frozenset({
-        "tool_seo_search_volume", "tool_seo_serp_organic", "tool_seo_keywords_for_url"
+        "tool_seo_search_volume",
+        "tool_seo_serp_organic",
+        "tool_seo_ranked_keywords_for_url",
+        "tool_seo_keywords_for_url",
     })
     _MAX_DATAFORSEO_CALLS = 3
 
@@ -283,7 +286,10 @@ def build_agent_graph(
         "tool_update_document_content", "tool_rename",
         "tool_move", "tool_delete_document", "tool_delete_folder",
         "tool_list_folder", "tool_read_document", "tool_search_documents",
-        "tool_seo_search_volume", "tool_seo_serp_organic", "tool_seo_keywords_for_url",
+        "tool_seo_search_volume",
+        "tool_seo_serp_organic",
+        "tool_seo_ranked_keywords_for_url",
+        "tool_seo_keywords_for_url",,
     })
 
     def execute_tool(state: AgentGraphState) -> dict[str, Any]:

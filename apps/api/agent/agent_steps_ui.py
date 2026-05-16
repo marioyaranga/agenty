@@ -55,9 +55,13 @@ TOOL_LABELS: dict[str, tuple[str, str]] = {
         "SERP orgánico",
         "Consulta resultados orgánicos en Google.",
     ),
+    "tool_seo_ranked_keywords_for_url": (
+        "Rankings por URL",
+        "Keywords orgánicas y posición para una página (DataForSEO Labs).",
+    ),
     "tool_seo_keywords_for_url": (
-        "Keywords por URL",
-        "Keywords asociadas a un dominio o página.",
+        "Rankings por URL",
+        "Keywords orgánicas y posición para una página (DataForSEO Labs).",
     ),
 }
 

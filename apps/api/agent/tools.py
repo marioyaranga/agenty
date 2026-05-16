@@ -11,7 +11,12 @@ from typing import Any
 
 from supabase import Client
 
-from agent.seo_tools import tool_seo_keywords_for_url, tool_seo_search_volume, tool_seo_serp_organic
+from agent.seo_tools import (
+    tool_seo_keywords_for_url,
+    tool_seo_ranked_keywords_for_url,
+    tool_seo_search_volume,
+    tool_seo_serp_organic,
+)
 from audit_log import record_audit
 from notifications import notify_document_index_outcome
 from postgrest_utils import first_dict_from_execute
@@ -661,6 +666,7 @@ TOOL_REGISTRY: dict[str, Any] = {
     "tool_search_documents": tool_search_documents,
     "tool_seo_search_volume": tool_seo_search_volume,
     "tool_seo_serp_organic": tool_seo_serp_organic,
+    "tool_seo_ranked_keywords_for_url": tool_seo_ranked_keywords_for_url,
     "tool_seo_keywords_for_url": tool_seo_keywords_for_url,
 }
 
@@ -899,28 +905,28 @@ GEMINI_TOOL_DECLARATIONS: list[dict[str, Any]] = [
         },
     },
     {
-        "name": "tool_seo_keywords_for_url",
+        "name": "tool_seo_ranked_keywords_for_url",
         "description": (
-            "Obtiene las keywords asociadas a sitios web vía DataForSEO (Google Ads). "
-            "Máximo 3 URLs por llamada. Si el usuario pide analizar más de 3 URLs, "
-            "llamá la tool UNA ÚNICA VEZ con las 3 más relevantes y pedile al usuario "
-            "que confirme cuáles otras quiere analizar — NO encadenes llamadas adicionales "
-            "por tu cuenta. "
-            "Usá esta tool cuando el usuario pida las keywords de un dominio o página, quiera "
-            "analizar por qué términos rankean competidores, o necesite descubrir keywords "
-            "a partir de URLs específicas."
+            "Lista las keywords orgánicas en las que rankea una URL de página concreta "
+            "(posición en Google + volumen), vía DataForSEO Labs Ranked Keywords. "
+            "Usá esta tool cuando el usuario pregunte por qué términos posiciona una URL, "
+            "qué keywords rankea una página del SERP, o el ranking orgánico de una URL específica. "
+            "Pasá la URL completa con https:// (no solo el dominio). "
+            "Una URL por llamada; si hay varias páginas, priorizá la más relevante o pedí confirmación."
         ),
         "parameters": {
             "type": "object",
             "properties": {
-                "urls": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Lista de hasta 3 dominios o URLs a analizar (ej: ['competitor.com', 'otro.com']). Para más de 3, llamá la tool varias veces en tandas.",
+                "url": {
+                    "type": "string",
+                    "description": (
+                        "URL completa de la página (ej: https://ejemplo.com/ruta/articulo). "
+                        "Requerido https:// para acotar a esa página y no todo el dominio."
+                    ),
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "Cantidad máxima de keywords por URL (default 10, máximo 1000). Usá un valor bajo (5-10) cuando pasás muchas URLs a la vez.",
+                    "description": "Máximo de keywords a devolver (default 20, máximo 1000).",
                 },
                 "location_code": {
                     "type": "integer",
@@ -931,7 +937,7 @@ GEMINI_TOOL_DECLARATIONS: list[dict[str, Any]] = [
                     "description": "Código de idioma DataForSEO (omitir para usar el default del espacio).",
                 },
             },
-            "required": ["urls"],
+            "required": ["url"],
         },
     },
 ]

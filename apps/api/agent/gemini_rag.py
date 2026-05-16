@@ -206,8 +206,11 @@ def answer_with_gemini_with_tools(
         "contexto RAG disponible y también podés usar tools para: "
         "1) crear, editar, mover o eliminar archivos y carpetas del espacio de trabajo; "
         "2) consultar volumen de búsqueda mensual de keywords (tool_seo_search_volume); "
-        "3) consultar el SERP orgánico de Google para una keyword (tool_seo_serp_organic). "
-        "Si el usuario pide SEO, volumen de búsqueda, SERP o ranking, usá las tools SEO. "
+        "3) consultar el SERP orgánico de Google para una keyword (tool_seo_serp_organic); "
+        "4) listar keywords orgánicas y posición para una URL de página "
+        "(tool_seo_ranked_keywords_for_url). "
+        "Si el usuario pide SEO, volumen, SERP, ranking o por qué keywords rankea una URL, "
+        "usá las tools SEO. "
         "Si el contexto RAG no alcanza para responder, decilo con claridad. "
         "Cuando una tool SEO devuelva datos con markdown ya formateado, incluílo en la respuesta tal cual."
     )
