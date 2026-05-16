@@ -33,6 +33,35 @@ def get_gemini_api_key_for_tenant(client: Client, tenant_id: str) -> str:
     return fallback
 
 
+def get_tenant_ai_config(client: Client, tenant_id: str) -> dict[str, str]:
+    """Lee gemini_api_key_encrypted y agent_chat_model en un solo query a tenant_ai_settings."""
+    res = (
+        client.table("tenant_ai_settings")
+        .select("gemini_api_key_encrypted, agent_chat_model")
+        .eq("tenant_id", tenant_id)
+        .limit(1)
+        .execute()
+    )
+    rows: list[dict[str, Any]] = res.data or []
+    row = rows[0] if rows else {}
+
+    enc = (row.get("gemini_api_key_encrypted") or "").strip()
+    if enc:
+        api_key = decrypt_secret(enc)
+    else:
+        api_key = (os.environ.get("GEMINI_API_KEY") or "").strip()
+        if not api_key:
+            raise RuntimeError(
+                "No hay clave Gemini: definí GEMINI_API_KEY en el servidor o configurá una clave por tenant."
+            )
+
+    from agent_chat_models import resolve_agent_chat_model  # import local para evitar circular
+    stored = (row.get("agent_chat_model") or "").strip() or None
+    chat_model = resolve_agent_chat_model(stored)
+
+    return {"api_key": api_key, "chat_model": chat_model}
+
+
 def resolve_gemini_api_key(
     *,
     api_key: str | None = None,

@@ -37,6 +37,7 @@ class AgentGraphState(TypedDict, total=False):
     pending_tool_args: dict[str, Any] | None
     tool_results: list[dict[str, Any]]
     tool_iteration: int
+    dataforseo_calls: int  # contador de calls a DataForSEO para hard limit
 
 
 def _read_float(name: str, default: float) -> float:
@@ -92,7 +93,7 @@ def build_agent_graph(
     min_ok_sim = _read_float("AGENT_CONTEXT_OK_MIN_SIMILARITY", 0.24)
     match_count = _read_int("AGENT_MATCH_COUNT", 10)
     max_attempts = min(2, max(1, _read_int("AGENT_MAX_RETRIEVAL_ATTEMPTS", 2)))
-    max_tool_iters = min(10, max(1, _read_int("AGENT_MAX_TOOL_ITERATIONS", 8)))
+    max_tool_iters = min(10, max(1, _read_int("AGENT_MAX_TOOL_ITERATIONS", 4)))
 
     step_idx = [0]
 
@@ -272,10 +273,44 @@ def build_agent_graph(
                 return "execute_tool"
         return "__end__"
 
+    _SEO_TOOLS = frozenset({
+        "tool_seo_search_volume", "tool_seo_serp_organic", "tool_seo_keywords_for_url"
+    })
+    _MAX_DATAFORSEO_CALLS = 3
+
+    _VALID_TOOL_KEYS = frozenset({
+        "tool_create_folder", "tool_create_document",
+        "tool_update_document_content", "tool_rename",
+        "tool_move", "tool_delete_document", "tool_delete_folder",
+        "tool_list_folder", "tool_read_document", "tool_search_documents",
+        "tool_seo_search_volume", "tool_seo_serp_organic", "tool_seo_keywords_for_url",
+    })
+
     def execute_tool(state: AgentGraphState) -> dict[str, Any]:
         tool_name = str(state.get("pending_tool_name") or "")
         tool_args = dict(state.get("pending_tool_args") or {})
         iters = int(state.get("tool_iteration") or 0)
+        dfs_calls = int(state.get("dataforseo_calls") or 0)
+        is_seo = tool_name in _SEO_TOOLS
+
+        # Hard limit: máximo _MAX_DATAFORSEO_CALLS calls DataForSEO por run
+        if is_seo and dfs_calls >= _MAX_DATAFORSEO_CALLS:
+            result: dict[str, Any] = {
+                "ok": False,
+                "error": (
+                    f"Límite de {_MAX_DATAFORSEO_CALLS} consultas DataForSEO por mensaje alcanzado. "
+                    "Respondé al usuario con los datos que ya tenés."
+                ),
+            }
+            prev_results = list(state.get("tool_results") or [])
+            prev_results.append({"tool_name": tool_name, "result": result})
+            return {
+                "tool_results": prev_results,
+                "tool_iteration": iters + 1,
+                "pending_tool_name": None,
+                "pending_tool_args": None,
+                "dataforseo_calls": dfs_calls,
+            }
 
         with traced_graph_node(
             langsmith_parent,
@@ -289,13 +324,6 @@ def build_agent_graph(
                 tool_name=tool_name,
                 tool_args=tool_args,
             )
-            _VALID_TOOL_KEYS = frozenset({
-                "tool_create_folder", "tool_create_document",
-                "tool_update_document_content", "tool_rename",
-                "tool_move", "tool_delete_document", "tool_delete_folder",
-                "tool_list_folder", "tool_read_document", "tool_search_documents",
-                "tool_seo_search_volume", "tool_seo_serp_organic",
-            })
             safe_key = tool_name if tool_name in _VALID_TOOL_KEYS else "tool_create_folder"
             insert_agent_step(
                 client,
@@ -315,6 +343,7 @@ def build_agent_graph(
             "tool_iteration": iters + 1,
             "pending_tool_name": None,
             "pending_tool_args": None,
+            "dataforseo_calls": dfs_calls + (1 if is_seo else 0),
         }
 
     g = StateGraph(AgentGraphState)

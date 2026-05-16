@@ -902,11 +902,13 @@ GEMINI_TOOL_DECLARATIONS: list[dict[str, Any]] = [
         "name": "tool_seo_keywords_for_url",
         "description": (
             "Obtiene las keywords asociadas a sitios web vía DataForSEO (Google Ads). "
-            "Procesa hasta 3 URLs por llamada. Si hay más URLs (por ejemplo de un SERP), "
-            "procesalas en tandas de 3: primero las URLs 1-3, luego 4-6, etc. "
+            "Máximo 3 URLs por llamada. Si el usuario pide analizar más de 3 URLs, "
+            "llamá la tool UNA ÚNICA VEZ con las 3 más relevantes y pedile al usuario "
+            "que confirme cuáles otras quiere analizar — NO encadenes llamadas adicionales "
+            "por tu cuenta. "
             "Usá esta tool cuando el usuario pida las keywords de un dominio o página, quiera "
             "analizar por qué términos rankean competidores, o necesite descubrir keywords "
-            "a partir de las URLs de un resultado SERP."
+            "a partir de URLs específicas."
         ),
         "parameters": {
             "type": "object",

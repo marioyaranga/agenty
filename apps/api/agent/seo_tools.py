@@ -25,7 +25,7 @@ from seo.seo_cache import (
     make_volume_key,
     set_cached,
 )
-from seo.seo_graph import _format_answer_markdown
+from seo.seo_format import _format_answer_markdown
 from seo.seo_keys import (
     dataforseo_configured,
     get_dataforseo_secrets_for_tenant,
@@ -79,10 +79,14 @@ def tool_seo_search_volume(
 
     try:
         vol_key = make_volume_key(kws, loc, lang)
-        rows = get_cached(client, tenant_id, vol_key)
-        if rows is None:
+        cached_hit = get_cached(client, tenant_id, vol_key)
+        if cached_hit is not None:
+            rows = cached_hit
+            from_cache = True
+        else:
             rows = fetch_search_volume_live(login, password, kws, location_code=loc, language_code=lang)
             set_cached(client, tenant_id, vol_key, "volume", rows, TTL_VOLUME_SECONDS)
+            from_cache = False
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": f"Error DataForSEO volumen: {exc}"}
 
@@ -98,6 +102,7 @@ def tool_seo_search_volume(
         "seo": True,
         "phase": "dataforseo",
         "mode": "volume",
+        "cached": from_cache,
         "markdown": markdown,
         "volume_summary": [
             {"keyword": r.get("keyword"), "search_volume": r.get("search_volume")}
@@ -168,12 +173,16 @@ def tool_seo_keywords_for_url(
 
     try:
         kfu_key = make_kfu_key(clean_urls, loc, lang, lim)
-        result_map = get_cached(client, tenant_id, kfu_key)
-        if result_map is None:
+        cached_map_hit = get_cached(client, tenant_id, kfu_key)
+        if cached_map_hit is not None:
+            result_map = cached_map_hit
+            from_cache = True
+        else:
             result_map = fetch_keywords_for_urls(
                 login, password, clean_urls, location_code=loc, language_code=lang, limit_per_target=lim
             )
             set_cached(client, tenant_id, kfu_key, "keywords_for_url", result_map, TTL_KFU_SECONDS)
+            from_cache = False
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": f"Error DataForSEO keywords_for_url: {exc}"}
 
@@ -208,6 +217,7 @@ def tool_seo_keywords_for_url(
         "seo": True,
         "phase": "dataforseo",
         "mode": "keywords_for_url",
+        "cached": from_cache,
         "markdown": markdown,
         "keywords_summary": keywords_summary[:50],
         "keyword_count": total_kw,
@@ -258,12 +268,16 @@ def tool_seo_serp_organic(
 
     try:
         serp_key = make_serp_key(kw, loc, lang, dep)
-        serp = get_cached(client, tenant_id, serp_key)
-        if serp is None:
+        serp_hit = get_cached(client, tenant_id, serp_key)
+        if serp_hit is not None:
+            serp = serp_hit
+            from_cache = True
+        else:
             serp = fetch_serp_google_organic_advanced(
                 login, password, kw, location_code=loc, language_code=lang, depth=dep
             )
             set_cached(client, tenant_id, serp_key, "serp", serp, TTL_SERP_SECONDS)
+            from_cache = False
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": f"Error DataForSEO SERP: {exc}"}
 
@@ -278,6 +292,7 @@ def tool_seo_serp_organic(
         "ok": True,
         "seo": True,
         "phase": "dataforseo",
+        "cached": from_cache,
         "mode": "serp",
         "markdown": markdown,
         "serp_summary": [

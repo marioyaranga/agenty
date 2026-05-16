@@ -12,7 +12,6 @@ from routes.agent import bp as agent_bp
 from routes.audit import bp as audit_bp
 from routes.documents import bp as documents_bp
 from routes.folders import bp as folders_bp
-from routes.seo_agent import bp as seo_agent_bp
 from routes.settings_ai import bp as settings_ai_bp
 from routes.settings_seo import bp as settings_seo_bp
 from routes.v1 import bp as v1_bp
@@ -52,7 +51,6 @@ def create_app() -> Flask:
     app.register_blueprint(audit_bp)
     app.register_blueprint(settings_ai_bp)
     app.register_blueprint(settings_seo_bp)
-    app.register_blueprint(seo_agent_bp)
     app.register_blueprint(workspace_bootstrap_bp)
 
     @app.get("/health")

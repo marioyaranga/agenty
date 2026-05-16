@@ -19,7 +19,7 @@ from flask import Blueprint, Response, current_app, jsonify, request, stream_wit
 
 from agent.graph import build_agent_graph
 from agent.persistence import finalize_agent_run, insert_agent_run, list_agent_steps_for_run
-from agent_chat_models import get_agent_chat_model_for_tenant
+from agent_chat_models import get_agent_chat_model_for_tenant  # noqa: F401 — usado fuera del chat endpoint
 from seo.seo_steps import format_seo_steps_for_ui
 from agent.tracing import (
     finish_langsmith_root,
@@ -29,7 +29,7 @@ from agent.tracing import (
 )
 from audit_log import record_audit
 from cursor import decode_cursor, encode_cursor
-from gemini_keys import get_gemini_api_key_for_tenant, resolve_gemini_api_key
+from gemini_keys import get_gemini_api_key_for_tenant, get_tenant_ai_config, resolve_gemini_api_key
 from notifications import notify_agent_chat_outcome
 from postgrest_utils import first_dict_from_execute
 from tenant_http import (
@@ -518,8 +518,9 @@ def agent_chat(tenant_id: str):
                 ls_root = ls_rt
                 trace_id = trace_id_for_persistence(ls_root)
 
-                gemini_key = get_gemini_api_key_for_tenant(client, tenant_id)
-                chat_model = get_agent_chat_model_for_tenant(client, tenant_id)
+                ai_config = get_tenant_ai_config(client, tenant_id)
+                gemini_key = ai_config["api_key"]
+                chat_model = ai_config["chat_model"]
 
                 max_turns = max(1, min(50, _read_int_env("AGENT_HISTORY_MAX_TURNS", 10)))
                 max_chars = max(100, _read_int_env("AGENT_HISTORY_MAX_CHARS_PER_TURN", 4000))
