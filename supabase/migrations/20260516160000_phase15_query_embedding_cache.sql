@@ -4,7 +4,7 @@
 
 CREATE TABLE public.query_embedding_cache (
   query_hash   TEXT        PRIMARY KEY,
-  embedding    VECTOR(1536) NOT NULL,
+  embedding    extensions.vector(1536) NOT NULL,
   created_at   TIMESTAMPTZ  DEFAULT now() NOT NULL
 );
 
