@@ -8,6 +8,7 @@ import {
   MessagePartPrimitive,
   useAuiState,
 } from "@assistant-ui/react";
+import { useShallow } from "zustand/shallow";
 import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
 import remarkGfm from "remark-gfm";
 import { ArrowUp, StopCircle, ChevronDown, FileText, Globe } from "lucide-react";
@@ -18,6 +19,7 @@ import { useOptionalAgentSteps } from "@/lib/contexts/agent-steps-context";
 import { AgentStepsPanel } from "@/components/chat/agent-steps-panel";
 import type { AgentRunStep } from "@/lib/types/agent-steps";
 import { useMentions } from "@/lib/contexts/mentions-context";
+import { useWebGrounding } from "@/lib/contexts/web-grounding-context";
 import { useWorkspace } from "@/lib/contexts/workspace-context";
 import { useViewer } from "@/lib/contexts/viewer-context";
 import { fetchDocumentContent } from "@/lib/api/documents";
@@ -114,11 +116,8 @@ function RunningStepsInline() {
   if (!steps?.isRunning || !steps.activeSteps?.length) return null;
 
   return (
-    <div className="flex w-full min-w-0 justify-start gap-3">
-      <div className="mt-1 flex size-7 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-foreground">
-        AI
-      </div>
-      <div className="min-w-0 max-w-[85%] flex-1">
+    <div className="flex w-full min-w-0 justify-start">
+      <div className="min-w-0 w-full max-w-3xl">
         <AgentStepsPanel steps={steps.activeSteps} defaultOpen />
       </div>
     </div>
@@ -163,7 +162,7 @@ function WelcomeScreen() {
 function UserMessage() {
   return (
     <MessagePrimitive.Root className="flex w-full min-w-0 justify-end">
-      <div className="max-w-[75%] min-w-0 rounded-2xl rounded-tr-sm bg-primary px-4 py-3 text-primary-foreground shadow-sm">
+      <div className="max-w-[75%] min-w-0 rounded-3xl bg-muted px-4 py-2.5 text-foreground">
         <MessagePrimitive.Parts
           components={{ Text: UserTextPart }}
         />
@@ -256,17 +255,22 @@ function useMessageCustomSteps(): AgentRunStep[] | undefined {
 }
 
 function useMessageWebSources(): Array<{ uri: string; title: string }> {
-  return useAuiState((s) => {
-    const meta = s.message.metadata as {
-      custom?: { web_sources?: unknown[] };
-    } | undefined;
-    const raw = meta?.custom?.web_sources;
-    if (!Array.isArray(raw) || raw.length === 0) return [];
-    return raw.filter(
-      (x): x is { uri: string; title: string } =>
-        typeof x === "object" && x !== null && "uri" in x,
-    );
-  });
+  // useShallow evita React #185: useAuiState usa useSyncExternalStore, que
+  // compara snapshots con Object.is. Retornar un array nuevo cada vez (filter
+  // o literal []) rompe la igualdad y dispara un loop infinito de re-renders.
+  return useAuiState(
+    useShallow((s) => {
+      const meta = s.message.metadata as {
+        custom?: { web_sources?: unknown[] };
+      } | undefined;
+      const raw = meta?.custom?.web_sources;
+      if (!Array.isArray(raw) || raw.length === 0) return [];
+      return raw.filter(
+        (x): x is { uri: string; title: string } =>
+          typeof x === "object" && x !== null && "uri" in x,
+      );
+    }),
+  );
 }
 
 function WebSourcesFooter({ sources }: { sources: Array<{ uri: string; title: string }> }) {
@@ -314,16 +318,12 @@ function AssistantMessage() {
   const webSources = useMessageWebSources();
 
   return (
-    <MessagePrimitive.Root className="flex w-full min-w-0 justify-start gap-3">
-      <div className="mt-1 flex size-7 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-foreground">
-        AI
-      </div>
-
-      <div className="flex min-w-0 max-w-[85%] flex-col gap-2">
+    <MessagePrimitive.Root className="flex w-full min-w-0 justify-start">
+      <div className="flex min-w-0 w-full max-w-3xl flex-col gap-3">
         {steps && steps.length > 0 ? (
           <AgentStepsPanel steps={steps} defaultOpen={false} />
         ) : null}
-        <div className="min-w-0 rounded-2xl rounded-tl-sm border bg-card px-4 py-3 shadow-sm">
+        <div className="min-w-0 py-0.5">
           <MessagePrimitive.Parts
             components={{ Text: AssistantMarkdownTextPart }}
           />
@@ -358,6 +358,7 @@ type MentionState = { query: string; atStart: number };
 function Composer() {
   const { addMention } = useMentions();
   const { activeTenantId } = useWorkspace();
+  const { enabled: webGroundingEnabled, toggle: toggleWebGrounding } = useWebGrounding();
   const [mentionState, setMentionState] = useState<MentionState | null>(null);
   const [suggestions, setSuggestions] = useState<DocOption[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -467,6 +468,21 @@ function Composer() {
             onKeyUp={handleKeyUp}
             className="max-h-40 min-h-[1.5rem] flex-1 resize-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
           />
+          <button
+            type="button"
+            onClick={toggleWebGrounding}
+            title={webGroundingEnabled ? "Búsqueda web activada (click para desactivar)" : "Activar búsqueda web"}
+            aria-label="Búsqueda web"
+            aria-pressed={webGroundingEnabled}
+            className={cn(
+              "flex size-8 shrink-0 items-center justify-center rounded-full border transition-colors",
+              webGroundingEnabled
+                ? "border-primary bg-primary/10 text-primary"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <Globe size={16} />
+          </button>
           <ThreadPrimitive.If running>
             <ComposerPrimitive.Cancel asChild>
               <button

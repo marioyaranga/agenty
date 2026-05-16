@@ -471,6 +471,7 @@ def agent_chat(tenant_id: str):
         return jsonify({"error": "message es obligatorio"}), 400
 
     raw_thread_id = (body.get("thread_id") or "").strip() or None
+    web_grounding_req = body.get("web_grounding_enabled")  # None si no viene en el body
 
     pinned_docs: list[dict] = []
     raw_mentions = body.get("mentions") or []
@@ -550,7 +551,10 @@ def agent_chat(tenant_id: str):
                     max_chars_per_turn=max_chars,
                 )
 
-                web_grounding_enabled = bool(ai_config.get("web_grounding_enabled") or False)
+                web_grounding_enabled = bool(
+                    web_grounding_req if web_grounding_req is not None
+                    else ai_config.get("web_grounding_enabled") or False
+                )
                 graph = build_agent_graph(
                     client,
                     run_id,

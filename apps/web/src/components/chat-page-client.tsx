@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { WebGroundingContext } from "@/lib/contexts/web-grounding-context";
 import { useRouter } from "next/navigation";
 import { AssistantRuntimeProvider, type ThreadMessageLike } from "@assistant-ui/react";
 import { useWorkspace } from "@/lib/contexts/workspace-context";
@@ -250,22 +251,38 @@ const ChatRuntimeShell = memo(function ChatRuntimeShell({
 }) {
   const stableMessages = useMemo(() => initialMessages, [initialMessages]);
 
+  const webGroundingRef = useRef(false);
+  const [webGroundingEnabled, setWebGroundingEnabled] = useState(false);
+  const toggleWebGrounding = useCallback(() => {
+    const next = !webGroundingRef.current;
+    webGroundingRef.current = next;
+    setWebGroundingEnabled(next);
+  }, []);
+
   const { runtime } = useWorkyAiRuntime(
     tenantId,
     callbacksRef,
     stableMessages,
     activeThreadId,
     mentionsRef,
+    webGroundingRef,
+  );
+
+  const webGroundingCtx = useMemo(
+    () => ({ enabled: webGroundingEnabled, toggle: toggleWebGrounding }),
+    [webGroundingEnabled, toggleWebGrounding],
   );
 
   return (
-    <AssistantRuntimeProvider runtime={runtime}>
-      <ChatWithRuntime
-        activeThreadId={activeThreadId}
-        threadTitleHint={threadTitleHint}
-        onNewChat={onNewChat}
-      />
-    </AssistantRuntimeProvider>
+    <WebGroundingContext.Provider value={webGroundingCtx}>
+      <AssistantRuntimeProvider runtime={runtime}>
+        <ChatWithRuntime
+          activeThreadId={activeThreadId}
+          threadTitleHint={threadTitleHint}
+          onNewChat={onNewChat}
+        />
+      </AssistantRuntimeProvider>
+    </WebGroundingContext.Provider>
   );
 });
 

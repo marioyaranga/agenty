@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import useSWR from "swr";
 import { useElementSize } from "@/lib/hooks/use-element-size";
 import { Tree, type NodeApi, type NodeRendererProps } from "react-arborist";
 import {
@@ -191,8 +192,23 @@ export function FileExplorerPanel() {
   }, [tenants, activeTenantId]);
   const canMutate = EDITOR_ROLES.has(activeRole);
 
-  const [treeData, setTreeData] = useState<TreeNode[]>([]);
-  const [loading, setLoading] = useState(false);
+  const swrKey = activeTenantId
+    ? `folder-tree:${activeTenantId}:${bootstrapTick}`
+    : null;
+  const {
+    data: treeRaw,
+    isValidating: loading,
+    mutate: mutateTree,
+  } = useSWR(swrKey, () => fetchTree(activeTenantId!), {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: true,
+    dedupingInterval: 5000,
+  });
+  const treeData = useMemo(
+    () => buildTree(treeRaw?.folders ?? [], treeRaw?.documents ?? []),
+    [treeRaw],
+  );
+
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
   const [newFolderDialogOpen, setNewFolderDialogOpen] = useState(false);
   const [newFileDialogOpen, setNewFileDialogOpen] = useState(false);
@@ -214,23 +230,6 @@ export function FileExplorerPanel() {
     width: treeWidth,
     height: treeHeight,
   } = useElementSize<HTMLDivElement>();
-
-  const loadTree = useCallback(async () => {
-    if (!activeTenantId) return;
-    setLoading(true);
-    try {
-      const res = await fetchTree(activeTenantId);
-      setTreeData(buildTree(res.folders, res.documents));
-    } catch {
-      setTreeData([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [activeTenantId, bootstrapTick]);
-
-  useEffect(() => {
-    void loadTree();
-  }, [loadTree]);
 
   // Cerrar ctx menu al click fuera
   useEffect(() => {
@@ -284,9 +283,9 @@ export function FileExplorerPanel() {
           // Ignorar errores individuales, refrescar el árbol
         }
       }
-      await loadTree();
+      await mutateTree();
     },
-    [activeTenantId, loadTree, treeData],
+    [activeTenantId, mutateTree, treeData],
   );
 
   // Rename inline handler
@@ -309,12 +308,12 @@ export function FileExplorerPanel() {
         } else {
           await renameDocument(activeTenantId, id, name);
         }
-        await loadTree();
+        await mutateTree();
       } catch {
-        await loadTree();
+        await mutateTree();
       }
     },
-    [activeTenantId, loadTree, treeData],
+    [activeTenantId, mutateTree, treeData],
   );
 
   // Crear carpeta
@@ -326,7 +325,7 @@ export function FileExplorerPanel() {
       setNewFolderDialogOpen(false);
       setDialogInput("");
       setNewItemParentId(null);
-      await loadTree();
+      await mutateTree();
     } catch {
       /* silencioso */
     } finally {
@@ -349,7 +348,7 @@ export function FileExplorerPanel() {
       setNewFileDialogOpen(false);
       setDialogInput("");
       setNewItemParentId(null);
-      await loadTree();
+      await mutateTree();
     } catch {
       /* silencioso */
     } finally {
@@ -393,7 +392,7 @@ export function FileExplorerPanel() {
       setUploadFile(null);
       setUploadFolderId(null);
       setUploadFolderLabel(null);
-      await loadTree();
+      await mutateTree();
     } catch (e) {
       setUploadError(e instanceof Error ? e.message : "Error al subir");
     } finally {
@@ -431,7 +430,7 @@ export function FileExplorerPanel() {
     } catch {
       /* silencioso */
     }
-    await loadTree();
+    await mutateTree();
   }
 
   if (!activeTenantId) {
@@ -523,7 +522,7 @@ export function FileExplorerPanel() {
                   variant="ghost"
                   size="icon-xs"
                   aria-label="Refrescar"
-                  onClick={() => void loadTree()}
+                  onClick={() => void mutateTree()}
                 >
                   {loading ? (
                     <Loader2 className="size-3.5 animate-spin" />

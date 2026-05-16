@@ -20,6 +20,7 @@ type AppShellProps = {
   tenants: TenantOption[];
   userEmail: string;
   showAudit: boolean;
+  initialTenantId: string | null;
 };
 
 export function AppShell({
@@ -27,10 +28,11 @@ export function AppShell({
   tenants,
   userEmail,
   showAudit,
+  initialTenantId,
 }: AppShellProps) {
   return (
     <TooltipProvider>
-      <WorkspaceProvider tenants={tenants}>
+      <WorkspaceProvider tenants={tenants} initialTenantId={initialTenantId}>
         <ChatThreadProvider>
         <ViewerProvider>
           <SidebarProvider className="h-full min-h-0">

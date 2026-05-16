@@ -5,7 +5,12 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { bootstrapWorkspaceDefaults } from "@/lib/api/folders";
 import type { TenantOption } from "@/lib/types/tenant";
 
-const TENANT_STORAGE_KEY = "workyai_active_tenant_id";
+export const TENANT_COOKIE_NAME = "workyai_active_tenant_id";
+const TENANT_COOKIE_MAX_AGE = 365 * 24 * 60 * 60;
+
+function writeTenantCookie(id: string) {
+  document.cookie = `${TENANT_COOKIE_NAME}=${encodeURIComponent(id)}; path=/; SameSite=Lax; Max-Age=${TENANT_COOKIE_MAX_AGE}`;
+}
 
 type WorkspaceState = {
   tenants: TenantOption[];
@@ -23,24 +28,20 @@ const WorkspaceContext = createContext<WorkspaceState | null>(null);
 export function WorkspaceProvider({
   children,
   tenants,
+  initialTenantId,
 }: {
   children: React.ReactNode;
   tenants: TenantOption[];
+  initialTenantId?: string | null;
 }) {
-  const [activeTenantId, setActiveTenantIdState] = useState<string | null>(null);
+  const [activeTenantId, setActiveTenantIdState] = useState<string | null>(
+    initialTenantId ?? null,
+  );
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
   const [bootstrapTick, setBootstrapTick] = useState(0);
 
-  // Tenants ya intentados en esta sesión para no repetir el request.
   const attemptedRef = useRef<Set<string>>(new Set());
-
-  useEffect(() => {
-    const stored = window.localStorage.getItem(TENANT_STORAGE_KEY);
-    const valid = tenants.find((t) => t.tenantId === stored);
-    const initial = valid ? stored : (tenants[0]?.tenantId ?? null);
-    setActiveTenantIdState(initial);
-  }, [tenants]);
 
   // Seeding fire-and-forget cuando se activa un tenant nuevo en esta sesión.
   useEffect(() => {
@@ -61,7 +62,7 @@ export function WorkspaceProvider({
   }, [activeTenantId]);
 
   function setActiveTenantId(id: string) {
-    window.localStorage.setItem(TENANT_STORAGE_KEY, id);
+    writeTenantCookie(id);
     setActiveTenantIdState(id);
   }
 

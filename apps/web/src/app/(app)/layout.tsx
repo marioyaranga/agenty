@@ -1,9 +1,11 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { AppShell } from "@/components/shell/app-shell";
 import { InAppNotificationsHost } from "@/components/in-app-notifications-host";
 import { createClient } from "@/lib/supabase/server";
 import { mapTenants } from "@/lib/utils/map-tenants";
+import { TENANT_COOKIE_NAME } from "@/lib/contexts/workspace-context";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +37,14 @@ export default async function AppGroupLayout({
     (t) => t.role === "owner" || t.role === "admin",
   );
 
+  const cookieStore = await cookies();
+  const stored = cookieStore.get(TENANT_COOKIE_NAME)?.value;
+  const decodedStored = stored ? decodeURIComponent(stored) : null;
+  const initialTenantId =
+    tenants.find((t) => t.tenantId === decodedStored)?.tenantId ??
+    tenants[0]?.tenantId ??
+    null;
+
   return (
     <>
       <InAppNotificationsHost userId={data.user.id} />
@@ -42,6 +52,7 @@ export default async function AppGroupLayout({
         tenants={tenants}
         userEmail={data.user.email ?? ""}
         showAudit={showAudit}
+        initialTenantId={initialTenantId}
       >
         {children}
       </AppShell>

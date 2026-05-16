@@ -21,7 +21,7 @@ export type ThreadRun = {
 
 export type ThreadDetail = ThreadItem & { runs: ThreadRun[] };
 
-type ThreadsListResponse = {
+export type ThreadsListResponse = {
   items: ThreadItem[];
   next_cursor: string | null;
 };
