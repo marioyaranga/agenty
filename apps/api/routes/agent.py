@@ -29,7 +29,7 @@ from agent.tracing import (
 )
 from audit_log import record_audit
 from cursor import decode_cursor, encode_cursor
-from gemini_keys import get_gemini_api_key_for_tenant
+from gemini_keys import get_gemini_api_key_for_tenant, resolve_gemini_api_key
 from notifications import notify_agent_chat_outcome
 from postgrest_utils import first_dict_from_execute
 from tenant_http import (
@@ -84,6 +84,29 @@ def _next_rag_node(
     if completed == "execute_tool":
         return "generate"
     return None
+
+
+_ACK_PROMPT = (
+    "Sos un asistente de IA. El usuario te envió este mensaje:\n"
+    "\"{message}\"\n\n"
+    "Respondé SOLO con 1 frase corta en español (máximo 10 palabras) que reconozca "
+    "su pedido y muestre que lo estás procesando ahora. "
+    "No des la respuesta final. Sin comillas ni punto al final."
+)
+
+
+def _generate_quick_ack(message: str, api_key: str, model: str) -> str:
+    """Genera 1 frase de reconocimiento contextual con Gemini (rápido, Flash)."""
+    try:
+        from google import genai  # importación local para no romper si falla
+        prompt = _ACK_PROMPT.format(message=message[:400])
+        client = genai.Client(api_key=resolve_gemini_api_key(api_key=api_key))
+        resp = client.models.generate_content(model=model, contents=prompt)
+        text = (resp.text or "").strip() if hasattr(resp, "text") else ""
+        text = " ".join(text.splitlines()).strip().strip('"').strip()
+        return text[:120] if text else "Entendido, dame un momento."
+    except Exception:  # noqa: BLE001
+        return "Entendido, dame un momento."
 
 
 def _read_float_env(name: str, default: float) -> float:
@@ -516,6 +539,10 @@ def agent_chat(tenant_id: str):
                     langsmith_parent=ls_root,
                 )
 
+                # Reconocimiento contextual generado por Gemini (antes de insert para minimizar latencia)
+                ack_text = _generate_quick_ack(message, gemini_key, chat_model)
+                yield _sse({"type": "ack", "text": ack_text})
+
                 insert_agent_run(
                     client,
                     run_id=run_id,
@@ -525,7 +552,7 @@ def agent_chat(tenant_id: str):
                     thread_id=thread_id,
                 )
 
-                # Primer evento: conexión establecida + primer nodo arrancando
+                # Señalización de inicio + primer nodo arrancando
                 yield _sse({"type": "started", "run_id": run_id, "thread_id": thread_id})
                 lbl0, desc0 = _NODE_SSE["retrieve"]
                 yield _sse({"type": "step", "node": "retrieve", "status": "running", "label": lbl0, "description": desc0})

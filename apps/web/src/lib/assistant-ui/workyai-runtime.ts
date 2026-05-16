@@ -7,6 +7,7 @@ import type { SeoSubagentStep } from "@/lib/types/seo-agent";
 import type { Mention } from "@/lib/contexts/mentions-context";
 
 type AgentSseEvent =
+  | { type: "ack"; text: string }
   | { type: "started"; run_id: string; thread_id: string }
   | { type: "step"; node: string; label: string; description: string; status: "running" | "done" }
   | { type: "done"; run_id: string; thread_id: string; answer: string; citations: unknown[]; steps: SeoSubagentStep[]; langsmith_trace_id: string | null; langsmith_enabled: boolean }
@@ -19,23 +20,6 @@ export type AgentRuntimeCallbacks = {
   onThreadUpdate?: (threadId: string) => void;
   onStepProgress?: (node: string, label: string, description: string, status: "running" | "done") => void;
 };
-
-function generateAck(message: string): string {
-  const t = message.trim();
-  if (/keyword|palabras?\s*clave|seo|serp/i.test(t))
-    return "Claro, voy a analizar esas keywords ahora mismo.";
-  if (/https?:\/\/|www\.|\.com\b|\.net\b|\.org\b|\burl\b/i.test(t))
-    return "Por supuesto, dame un momento que reviso esas URLs.";
-  if (/resumi|síntesis|sintetiza/i.test(t))
-    return "Entendido, preparo un resumen para vos.";
-  if (/\bcrea\b|\bgenera\b|escrib[ei]|redact/i.test(t))
-    return "Perfecto, lo estoy preparando.";
-  if (/busca|encuentra/i.test(t))
-    return "Enseguida busco eso en tus documentos.";
-  if (/\?$/.test(t.trim()))
-    return "Buena pregunta, déjame investigar eso.";
-  return "Entendido, dame un momento.";
-}
 
 export function useWorkyAiRuntime(
   tenantId: string,
@@ -56,9 +40,6 @@ export function useWorkyAiRuntime(
           .join("\n") ?? "";
 
       const turnIndex = messages.filter((m) => m.role === "assistant").length;
-
-      // Reconocimiento inmediato — aparece antes de que el fetch siquiera empiece
-      yield { content: [{ type: "text" as const, text: generateAck(userText) }] };
 
       callbacks?.onRunStart();
 
@@ -140,7 +121,10 @@ export function useWorkyAiRuntime(
                 continue;
               }
 
-              if (event.type === "started") {
+              if (event.type === "ack") {
+                // Reconocimiento generado por Gemini — aparece antes que los pasos
+                yield { content: [{ type: "text" as const, text: event.text }] };
+              } else if (event.type === "started") {
                 threadIdRef.current = event.thread_id;
                 callbacks?.onThreadUpdate?.(event.thread_id);
               } else if (event.type === "step") {
