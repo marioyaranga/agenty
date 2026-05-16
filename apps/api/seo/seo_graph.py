@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Literal, TypedDict
 
 from google import genai
@@ -15,10 +16,18 @@ from agent.tracing import traced_graph_node
 from agent_chat_models import DEFAULT_AGENT_CHAT_MODEL
 from seo.dataforseo_serp import fetch_serp_google_organic_advanced
 from seo.dataforseo_volume import fetch_search_volume_live
+from seo.seo_cache import (
+    TTL_SERP_SECONDS,
+    TTL_VOLUME_SECONDS,
+    get_cached,
+    make_serp_key,
+    make_volume_key,
+    set_cached,
+)
 from seo.seo_keys import SeoDefaults
 
 MAX_VOLUME_KEYWORDS = 50
-MAX_SERP_KEYWORDS = 10
+MAX_SERP_KEYWORDS = 5  # reducido de 10: SERP cuesta $0.002/keyword
 
 SeoMode = Literal["volume", "serp", "both"]
 
@@ -246,6 +255,7 @@ def build_seo_graph(
         loc = int(defaults["location_code"])
         lang = str(defaults["language_code"])
         depth = int(defaults["serp_depth"])
+        tenant_id = str(state.get("tenant_id") or "")
 
         volume_results: list[dict[str, Any]] = []
         serp_results: list[dict[str, Any]] = []
@@ -255,20 +265,40 @@ def build_seo_graph(
             name="seo.run_volume_and_serp",
             inputs={"mode": mode, "keywords": keywords[:10]},
         ) as (_, holder):
+            # ── Volumen (1 sola tarea batch, con caché 24h) ───────────────────
             if mode in ("volume", "both") and keywords:
                 vol_kws = keywords[:MAX_VOLUME_KEYWORDS]
-                volume_results = fetch_search_volume_live(
-                    dataforseo_login,
-                    dataforseo_password,
-                    vol_kws,
-                    location_code=loc,
-                    language_code=lang,
-                )
+                vol_key = make_volume_key(vol_kws, loc, lang)
+                hit = get_cached(client, tenant_id, vol_key)
+                if hit is not None:
+                    volume_results = hit
+                else:
+                    volume_results = fetch_search_volume_live(
+                        dataforseo_login,
+                        dataforseo_password,
+                        vol_kws,
+                        location_code=loc,
+                        language_code=lang,
+                    )
+                    set_cached(client, tenant_id, vol_key, "volume", volume_results, TTL_VOLUME_SECONDS)
+
+            # ── SERP (paralelo, con caché 6h por keyword) ─────────────────────
             if mode in ("serp", "both") and keywords:
                 serp_kws = keywords[:MAX_SERP_KEYWORDS]
+                cached_map: dict[str, dict[str, Any]] = {}
+                uncached: list[str] = []
+
                 for kw in serp_kws:
-                    serp_results.append(
-                        fetch_serp_google_organic_advanced(
+                    key = make_serp_key(kw, loc, lang, depth)
+                    hit = get_cached(client, tenant_id, key)
+                    if hit is not None:
+                        cached_map[kw] = hit
+                    else:
+                        uncached.append(kw)
+
+                if uncached:
+                    def _fetch_one(kw: str) -> tuple[str, dict[str, Any]]:
+                        return kw, fetch_serp_google_organic_advanced(
                             dataforseo_login,
                             dataforseo_password,
                             kw,
@@ -276,7 +306,21 @@ def build_seo_graph(
                             language_code=lang,
                             depth=depth,
                         )
-                    )
+
+                    with ThreadPoolExecutor(max_workers=min(len(uncached), 5)) as pool:
+                        futs = [pool.submit(_fetch_one, kw) for kw in uncached]
+                        for fut in as_completed(futs):
+                            kw, result = fut.result()
+                            cached_map[kw] = result
+                            set_cached(
+                                client, tenant_id,
+                                make_serp_key(kw, loc, lang, depth),
+                                "serp", result, TTL_SERP_SECONDS,
+                            )
+
+                # Preservar el orden original de keywords
+                serp_results = [cached_map[kw] for kw in serp_kws if kw in cached_map]
+
             holder["outputs"] = {
                 "volume_rows": len(volume_results),
                 "serp_blocks": len(serp_results),

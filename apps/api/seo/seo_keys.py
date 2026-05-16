@@ -12,7 +12,7 @@ DEFAULT_LOCATION_CODE = 2484
 DEFAULT_LANGUAGE_CODE = "es"
 DEFAULT_SERP_MODE = "advanced"
 DEFAULT_SERP_DEPTH = 10
-MIN_SERP_DEPTH = 5
+MIN_SERP_DEPTH = 10
 MAX_SERP_DEPTH = 30
 
 
@@ -24,7 +24,11 @@ class SeoDefaults(TypedDict):
 
 
 def _clamp_depth(depth: int) -> int:
-    return max(MIN_SERP_DEPTH, min(MAX_SERP_DEPTH, depth))
+    # DataForSEO cobra por página de 10 resultados. Redondear al múltiplo de 10
+    # superior garantiza el máximo de resultados por el mismo precio.
+    import math
+    clamped = max(MIN_SERP_DEPTH, min(MAX_SERP_DEPTH, depth))
+    return math.ceil(clamped / 10) * 10
 
 
 def get_effective_seo_defaults(client: Client, tenant_id: str) -> SeoDefaults:

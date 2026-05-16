@@ -15,6 +15,16 @@ from routes.documents import EDITOR_ROLES
 from seo.dataforseo_keywords_for_url import fetch_keywords_for_urls
 from seo.dataforseo_serp import fetch_serp_google_organic_advanced
 from seo.dataforseo_volume import fetch_search_volume_live
+from seo.seo_cache import (
+    TTL_KFU_SECONDS,
+    TTL_SERP_SECONDS,
+    TTL_VOLUME_SECONDS,
+    get_cached,
+    make_kfu_key,
+    make_serp_key,
+    make_volume_key,
+    set_cached,
+)
 from seo.seo_graph import _format_answer_markdown
 from seo.seo_keys import (
     dataforseo_configured,
@@ -68,7 +78,11 @@ def tool_seo_search_volume(
         return {"ok": False, "error": "Se requiere al menos una keyword."}
 
     try:
-        rows = fetch_search_volume_live(login, password, kws, location_code=loc, language_code=lang)
+        vol_key = make_volume_key(kws, loc, lang)
+        rows = get_cached(client, tenant_id, vol_key)
+        if rows is None:
+            rows = fetch_search_volume_live(login, password, kws, location_code=loc, language_code=lang)
+            set_cached(client, tenant_id, vol_key, "volume", rows, TTL_VOLUME_SECONDS)
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": f"Error DataForSEO volumen: {exc}"}
 
@@ -153,9 +167,13 @@ def tool_seo_keywords_for_url(
         return {"ok": False, "error": "Se requiere al menos una URL o dominio."}
 
     try:
-        result_map = fetch_keywords_for_urls(
-            login, password, clean_urls, location_code=loc, language_code=lang, limit_per_target=lim
-        )
+        kfu_key = make_kfu_key(clean_urls, loc, lang, lim)
+        result_map = get_cached(client, tenant_id, kfu_key)
+        if result_map is None:
+            result_map = fetch_keywords_for_urls(
+                login, password, clean_urls, location_code=loc, language_code=lang, limit_per_target=lim
+            )
+            set_cached(client, tenant_id, kfu_key, "keywords_for_url", result_map, TTL_KFU_SECONDS)
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": f"Error DataForSEO keywords_for_url: {exc}"}
 
@@ -239,9 +257,13 @@ def tool_seo_serp_organic(
         return {"ok": False, "error": "Se requiere la keyword."}
 
     try:
-        serp = fetch_serp_google_organic_advanced(
-            login, password, kw, location_code=loc, language_code=lang, depth=dep
-        )
+        serp_key = make_serp_key(kw, loc, lang, dep)
+        serp = get_cached(client, tenant_id, serp_key)
+        if serp is None:
+            serp = fetch_serp_google_organic_advanced(
+                login, password, kw, location_code=loc, language_code=lang, depth=dep
+            )
+            set_cached(client, tenant_id, serp_key, "serp", serp, TTL_SERP_SECONDS)
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": f"Error DataForSEO SERP: {exc}"}
 
