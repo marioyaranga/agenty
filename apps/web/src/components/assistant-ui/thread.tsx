@@ -10,7 +10,7 @@ import {
 } from "@assistant-ui/react";
 import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
 import remarkGfm from "remark-gfm";
-import { ArrowUp, StopCircle, ChevronDown, FileText } from "lucide-react";
+import { ArrowUp, StopCircle, ChevronDown, FileText, Globe } from "lucide-react";
 import { ScrollArea as ScrollAreaPrimitive } from "@base-ui/react/scroll-area";
 import { cn } from "@/lib/utils";
 import { ScrollBar } from "@/components/ui/scroll-area";
@@ -255,12 +255,63 @@ function useMessageCustomSteps(): AgentRunStep[] | undefined {
   });
 }
 
+function useMessageWebSources(): Array<{ uri: string; title: string }> {
+  return useAuiState((s) => {
+    const meta = s.message.metadata as {
+      custom?: { web_sources?: unknown[] };
+    } | undefined;
+    const raw = meta?.custom?.web_sources;
+    if (!Array.isArray(raw) || raw.length === 0) return [];
+    return raw.filter(
+      (x): x is { uri: string; title: string } =>
+        typeof x === "object" && x !== null && "uri" in x,
+    );
+  });
+}
+
+function WebSourcesFooter({ sources }: { sources: Array<{ uri: string; title: string }> }) {
+  if (sources.length === 0) return null;
+  return (
+    <div className="mt-1 flex flex-col gap-1.5">
+      <p className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+        <Globe size={12} />
+        Fuentes web
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {sources.map((s, i) => {
+          let domain = "";
+          try {
+            domain = new URL(s.uri).hostname.replace(/^www\./, "");
+          } catch {
+            domain = s.uri;
+          }
+          const favicon = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=16`;
+          return (
+            <a
+              key={i}
+              href={s.uri}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={s.title || s.uri}
+              className="flex max-w-[200px] items-center gap-1.5 truncate rounded-md border bg-muted/50 px-2 py-1 text-xs text-foreground/80 hover:bg-muted hover:text-foreground transition-colors"
+            >
+              <img src={favicon} alt="" width={12} height={12} className="shrink-0" />
+              <span className="truncate">{s.title || domain}</span>
+            </a>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function AssistantMessage() {
   const turnIndex = useAssistantTurnIndex();
   const stepsCtx = useOptionalAgentSteps();
   const metadataSteps = useMessageCustomSteps();
   const contextSteps = stepsCtx?.getStepsForTurn(turnIndex);
   const steps = metadataSteps ?? contextSteps;
+  const webSources = useMessageWebSources();
 
   return (
     <MessagePrimitive.Root className="flex w-full min-w-0 justify-start gap-3">
@@ -281,6 +332,7 @@ function AssistantMessage() {
               Error al generar la respuesta. Intentá de nuevo.
             </p>
           </MessagePrimitive.Error>
+          <WebSourcesFooter sources={webSources} />
         </div>
       </div>
     </MessagePrimitive.Root>

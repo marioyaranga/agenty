@@ -135,6 +135,8 @@ def answer_with_gemini(
 
 def _build_tools_config(
     tool_declarations: list[dict[str, Any]],
+    *,
+    enable_web_search: bool = False,
 ) -> list[genai_types.Tool]:
     """Construye la lista de `types.Tool` para pasar a generate_content."""
     fn_decls = []
@@ -143,9 +145,16 @@ def _build_tools_config(
             fn_decls.append(genai_types.FunctionDeclaration(**decl))
         except Exception:  # noqa: BLE001
             pass
-    if not fn_decls:
-        return []
-    return [genai_types.Tool(function_declarations=fn_decls)]
+
+    tools: list[genai_types.Tool] = []
+    if enable_web_search:
+        try:
+            tools.append(genai_types.Tool(google_search=genai_types.GoogleSearch()))
+        except Exception:  # noqa: BLE001
+            pass
+    if fn_decls:
+        tools.append(genai_types.Tool(function_declarations=fn_decls))
+    return tools
 
 
 def answer_with_gemini_with_tools(
@@ -157,11 +166,12 @@ def answer_with_gemini_with_tools(
     pinned_docs: list[dict[str, Any]] | None = None,
     api_key: str | None = None,
     model: str | None = None,
+    enable_web_search: bool = False,
 ) -> dict[str, Any]:
     """Genera respuesta con soporte de function calling de Gemini.
 
     Retorna un dict con:
-    - {"text": ..., "citations": ...}  si el modelo respondió con texto.
+    - {"text": ..., "citations": ..., "web_sources": ...}  si el modelo respondió con texto.
     - {"tool_name": ..., "tool_args": ...}  si el modelo emitió una tool call.
     """
     from agent.tools import GEMINI_TOOL_DECLARATIONS  # import local para evitar circular
@@ -201,6 +211,13 @@ def answer_with_gemini_with_tools(
         else:
             tool_history += f"\n[Tool {tname} falló: {result.get('error', 'desconocido')}]"
 
+    web_search_instruction = (
+        "5) buscar información actualizada en internet usando Google Search (usá esta capacidad "
+        "cuando el usuario pregunte algo que no está en el contexto RAG ni en las tools, "
+        "por ejemplo noticias, precios, eventos recientes o cualquier dato público actual). "
+        "Priorizá siempre el contexto RAG y las tools internas para datos del espacio; "
+        "recurrí a Google Search solo si el RAG no alcanza. "
+    ) if enable_web_search else ""
     system_prompt = (
         "Sos un asistente inteligente en español. Podés responder preguntas usando el "
         "contexto RAG disponible y también podés usar tools para: "
@@ -208,7 +225,8 @@ def answer_with_gemini_with_tools(
         "2) consultar volumen de búsqueda mensual de keywords (tool_seo_search_volume); "
         "3) consultar el SERP orgánico de Google para una keyword (tool_seo_serp_organic); "
         "4) listar keywords orgánicas y posición para una URL de página "
-        "(tool_seo_ranked_keywords_for_url). "
+        "(tool_seo_ranked_keywords_for_url); "
+        f"{web_search_instruction}"
         "Si el usuario pide SEO, volumen, SERP, ranking o por qué keywords rankea una URL, "
         "usá las tools SEO. "
         "Si el contexto RAG no alcanza para responder, decilo con claridad. "
@@ -230,7 +248,7 @@ def answer_with_gemini_with_tools(
     key = resolve_gemini_api_key(api_key=api_key)
     genai_client = genai.Client(api_key=key)
 
-    tools = _build_tools_config(GEMINI_TOOL_DECLARATIONS)
+    tools = _build_tools_config(GEMINI_TOOL_DECLARATIONS, enable_web_search=enable_web_search)
     config = genai_types.GenerateContentConfig(tools=tools) if tools else None
 
     try:
@@ -261,7 +279,21 @@ def answer_with_gemini_with_tools(
                         args = {}
                 return {"tool_name": fc.name, "tool_args": args}
 
+    # Extraer fuentes de Google Search Grounding (si el modelo las usó).
+    web_sources: list[dict[str, str]] = []
+    for cand in candidates:
+        gm = getattr(cand, "grounding_metadata", None)
+        if not gm:
+            continue
+        for ch in getattr(gm, "grounding_chunks", None) or []:
+            web = getattr(ch, "web", None)
+            if web:
+                uri = str(getattr(web, "uri", "") or "")
+                title = str(getattr(web, "title", "") or "")
+                if uri:
+                    web_sources.append({"uri": uri, "title": title})
+
     text = (resp.text or "").strip() if hasattr(resp, "text") else ""
     if not text:
         text = "No se pudo obtener texto del modelo."
-    return {"text": text, "citations": cites}
+    return {"text": text, "citations": cites, "web_sources": web_sources}

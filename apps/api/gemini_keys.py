@@ -33,11 +33,11 @@ def get_gemini_api_key_for_tenant(client: Client, tenant_id: str) -> str:
     return fallback
 
 
-def get_tenant_ai_config(client: Client, tenant_id: str) -> dict[str, str]:
-    """Lee gemini_api_key_encrypted y agent_chat_model en un solo query a tenant_ai_settings."""
+def get_tenant_ai_config(client: Client, tenant_id: str) -> dict[str, Any]:
+    """Lee gemini_api_key_encrypted, agent_chat_model y web_grounding_enabled en un solo query."""
     res = (
         client.table("tenant_ai_settings")
-        .select("gemini_api_key_encrypted, agent_chat_model")
+        .select("gemini_api_key_encrypted, agent_chat_model, web_grounding_enabled")
         .eq("tenant_id", tenant_id)
         .limit(1)
         .execute()
@@ -59,7 +59,13 @@ def get_tenant_ai_config(client: Client, tenant_id: str) -> dict[str, str]:
     stored = (row.get("agent_chat_model") or "").strip() or None
     chat_model = resolve_agent_chat_model(stored)
 
-    return {"api_key": api_key, "chat_model": chat_model}
+    web_grounding_enabled = bool(row.get("web_grounding_enabled") or False)
+
+    return {
+        "api_key": api_key,
+        "chat_model": chat_model,
+        "web_grounding_enabled": web_grounding_enabled,
+    }
 
 
 def resolve_gemini_api_key(

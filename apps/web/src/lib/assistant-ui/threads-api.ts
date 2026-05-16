@@ -14,6 +14,7 @@ export type ThreadRun = {
   output_message: string | null;
   status: string;
   citations: unknown[];
+  web_sources?: Array<{ uri: string; title: string }>;
   created_at: string;
   steps?: AgentRunStep[];
 };

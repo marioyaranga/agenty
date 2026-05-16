@@ -11,6 +11,7 @@ import {
   deleteTenantGeminiApiKey,
   getTenantAiSettings,
   patchTenantAgentChatModel,
+  patchTenantWebGrounding,
   putTenantGeminiApiKey,
   type TenantAiSettings,
 } from "@/lib/api/tenant-ai-settings";
@@ -40,6 +41,8 @@ export function SettingsPageClient({ tenants }: { tenants: TenantOption[] }) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingModel, setSavingModel] = useState(false);
+  const [webGrounding, setWebGrounding] = useState(false);
+  const [savingGrounding, setSavingGrounding] = useState(false);
   const [seoConfigured, setSeoConfigured] = useState<boolean | null>(null);
   const [seoLogin, setSeoLogin] = useState("");
   const [seoPassword, setSeoPassword] = useState("");
@@ -80,6 +83,7 @@ export function SettingsPageClient({ tenants }: { tenants: TenantOption[] }) {
     setChatCatalog(data.agent_chat_models);
     setEffectiveChatModel(data.agent_chat_model);
     setChatModelDraft(data.agent_chat_model_stored ?? "");
+    setWebGrounding(data.web_grounding_enabled ?? false);
   }, []);
 
   const applySeoSettings = useCallback((data: TenantSeoSettings) => {
@@ -326,6 +330,44 @@ export function SettingsPageClient({ tenants }: { tenants: TenantOption[] }) {
     }
   }
 
+  async function saveGrounding(enabled: boolean) {
+    setMessage(null);
+    if (!canEdit) {
+      setMessage("Solo owner o admin pueden cambiar esta configuración.");
+      return;
+    }
+    const apiBase = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "");
+    if (!apiBase || !activeTenantId) {
+      setMessage("Configuración incompleta (API o espacio).");
+      return;
+    }
+    const supabase = createClient();
+    const { data: sessionData, error: sessionError } =
+      await supabase.auth.getSession();
+    if (sessionError || !sessionData.session?.access_token) {
+      setMessage(
+        sessionError?.message ??
+          "No hay sesión con access_token. Iniciá sesión de nuevo.",
+      );
+      return;
+    }
+    setSavingGrounding(true);
+    try {
+      const data = await patchTenantWebGrounding(
+        apiBase,
+        sessionData.session.access_token,
+        activeTenantId,
+        enabled,
+      );
+      applyAiSettings(data);
+      setMessage(enabled ? "Búsqueda web activada." : "Búsqueda web desactivada.");
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Error al guardar");
+    } finally {
+      setSavingGrounding(false);
+    }
+  }
+
   async function saveChatModel() {
     setMessage(null);
     if (!canEdit) {
@@ -490,6 +532,39 @@ export function SettingsPageClient({ tenants }: { tenants: TenantOption[] }) {
             >
               {savingModel ? "Guardando…" : "Guardar modelo"}
             </Button>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">
+        <h2 className="text-sm font-medium text-foreground">Búsqueda web (Google Search)</h2>
+        <p className="text-sm text-muted-foreground">
+          Permite que el agente consulte Google Search cuando el contexto RAG no alcanza.
+          Usa la misma clave Gemini del espacio, sin costo adicional de API.
+        </p>
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Cargando…</p>
+        ) : null}
+        {tenants.length > 0 && !canEdit ? (
+          <p className="text-sm text-muted-foreground" role="status">
+            Tu rol no permite cambiar esta configuración. Contactá a un owner o admin.
+          </p>
+        ) : tenants.length > 0 && canEdit ? (
+          <div className="flex items-center gap-3">
+            <label className="relative inline-flex cursor-pointer items-center">
+              <input
+                type="checkbox"
+                className="peer sr-only"
+                checked={webGrounding}
+                disabled={savingGrounding || !activeTenantId || loading}
+                onChange={(e) => void saveGrounding(e.target.checked)}
+              />
+              <div className="peer h-5 w-9 rounded-full border bg-input transition-colors peer-checked:border-primary peer-checked:bg-primary peer-disabled:cursor-not-allowed peer-disabled:opacity-50 after:absolute after:start-[2px] after:top-[2px] after:size-4 after:rounded-full after:border after:border-border after:bg-background after:transition-all after:content-[''] peer-checked:after:translate-x-full" />
+            </label>
+            <span className="text-sm text-foreground">
+              {webGrounding ? "Activada" : "Desactivada"}
+              {savingGrounding ? " (guardando…)" : ""}
+            </span>
           </div>
         ) : null}
       </section>

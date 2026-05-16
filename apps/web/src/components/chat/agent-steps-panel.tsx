@@ -6,6 +6,7 @@ import {
   ChevronDown,
   Circle,
   Cog,
+  Globe,
   Loader2,
   MinusCircle,
   Search,
@@ -51,12 +52,15 @@ function StatusIcon({ status }: { status: AgentRunStepStatus }) {
   );
 }
 
-function KindIcon({ kind }: { kind: AgentStepKind }) {
+function KindIcon({ kind, label }: { kind: AgentStepKind; label: string }) {
   if (kind === "tool") {
     return <Cog className="size-4 shrink-0 text-muted-foreground" aria-hidden />;
   }
   if (kind === "seo") {
     return <Sparkles className="size-4 shrink-0 text-muted-foreground" aria-hidden />;
+  }
+  if (label === "Búsqueda web") {
+    return <Globe className="size-4 shrink-0 text-muted-foreground" aria-hidden />;
   }
   return <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden />;
 }
@@ -75,7 +79,7 @@ function AgentStepRow({ step }: { step: AgentRunStep }) {
       <StatusIcon status={step.status} />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <KindIcon kind={step.kind} />
+          <KindIcon kind={step.kind} label={step.label} />
           <p className="text-sm font-medium text-foreground">{step.label}</p>
           {step.kind === "tool" && step.tool_name ? (
             <Badge variant="secondary" className="font-mono text-xs">

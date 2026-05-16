@@ -87,6 +87,20 @@ def _row_exists(client: Client, tenant_id: str) -> bool:
     return bool(res.data)
 
 
+def _web_grounding_enabled(client: Client, tenant_id: str) -> bool:
+    res = (
+        client.table("tenant_ai_settings")
+        .select("web_grounding_enabled")
+        .eq("tenant_id", tenant_id)
+        .limit(1)
+        .execute()
+    )
+    rows: list[dict[str, Any]] = res.data or []
+    if not rows:
+        return False
+    return bool(rows[0].get("web_grounding_enabled") or False)
+
+
 @bp.get("/tenants/<tenant_id>/settings/ai")
 def get_ai_settings(tenant_id: str):
     claims, err = require_bearer_jwt()
@@ -118,6 +132,7 @@ def get_ai_settings(tenant_id: str):
                 "agent_chat_model": effective,
                 "agent_chat_model_stored": stored,
                 "agent_chat_models": agent_chat_models_catalog(),
+                "web_grounding_enabled": _web_grounding_enabled(client, tenant_id),
             }
         ),
         200,
@@ -147,43 +162,49 @@ def patch_ai_settings(tenant_id: str):
         return ra
 
     body = request.get_json(silent=True) or {}
-    if "agent_chat_model" not in body:
-        return jsonify({"error": "agent_chat_model es obligatorio en el body"}), 400
+    has_model = "agent_chat_model" in body
+    has_grounding = "web_grounding_enabled" in body
+    if not has_model and not has_grounding:
+        return jsonify({"error": "Incluí al menos agent_chat_model o web_grounding_enabled en el body"}), 400
 
-    raw_val = body.get("agent_chat_model")
-    if raw_val is None:
-        new_model: str | None = None
-    else:
-        s = str(raw_val).strip()
-        if not s:
-            new_model = None
-        elif not is_allowed_agent_chat_model(s):
-            return jsonify({"error": "agent_chat_model no está en la lista permitida"}), 400
+    fields: dict[str, Any] = {"updated_by": user_id}
+
+    if has_model:
+        raw_val = body.get("agent_chat_model")
+        if raw_val is None:
+            new_model: str | None = None
         else:
-            new_model = s
+            s = str(raw_val).strip()
+            if not s:
+                new_model = None
+            elif not is_allowed_agent_chat_model(s):
+                return jsonify({"error": "agent_chat_model no está en la lista permitida"}), 400
+            else:
+                new_model = s
+        fields["agent_chat_model"] = new_model
+
+    if has_grounding:
+        raw_grounding = body.get("web_grounding_enabled")
+        if not isinstance(raw_grounding, bool):
+            return jsonify({"error": "web_grounding_enabled debe ser true o false"}), 400
+        fields["web_grounding_enabled"] = raw_grounding
 
     try:
         if _row_exists(client, tenant_id):
             (
                 client.table("tenant_ai_settings")
-                .update({"agent_chat_model": new_model, "updated_by": user_id})
+                .update(fields)
                 .eq("tenant_id", tenant_id)
                 .execute()
             )
         else:
             (
                 client.table("tenant_ai_settings")
-                .insert(
-                    {
-                        "tenant_id": tenant_id,
-                        "agent_chat_model": new_model,
-                        "updated_by": user_id,
-                    }
-                )
+                .insert({"tenant_id": tenant_id, **fields})
                 .execute()
             )
     except Exception as exc:  # noqa: BLE001
-        return jsonify({"error": "Fallo al guardar modelo", "detail": str(exc)}), 502
+        return jsonify({"error": "Fallo al guardar configuración", "detail": str(exc)}), 502
 
     effective = get_agent_chat_model_for_tenant(client, tenant_id)
     record_audit(
@@ -191,7 +212,7 @@ def patch_ai_settings(tenant_id: str):
         tenant_id=tenant_id,
         actor_user_id=user_id,
         event_type="settings.ai.updated",
-        payload={"action": "patch_agent_chat_model", "model": effective},
+        payload={"action": "patch_ai_settings", "fields": list(fields.keys())},
     )
 
     return (
@@ -201,6 +222,7 @@ def patch_ai_settings(tenant_id: str):
                 "agent_chat_model": effective,
                 "agent_chat_model_stored": _stored_valid_chat_model(client, tenant_id),
                 "agent_chat_models": agent_chat_models_catalog(),
+                "web_grounding_enabled": _web_grounding_enabled(client, tenant_id),
             }
         ),
         200,
@@ -278,6 +300,7 @@ def put_ai_settings(tenant_id: str):
                 "agent_chat_model": get_agent_chat_model_for_tenant(client, tenant_id),
                 "agent_chat_model_stored": _stored_valid_chat_model(client, tenant_id),
                 "agent_chat_models": agent_chat_models_catalog(),
+                "web_grounding_enabled": _web_grounding_enabled(client, tenant_id),
             }
         ),
         200,

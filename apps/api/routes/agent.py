@@ -341,6 +341,13 @@ def get_thread(tenant_id: str, thread_id: str):
     except Exception as exc:  # noqa: BLE001
         current_app.logger.warning("get_thread: no se pudieron cargar agent_steps: %s", exc)
 
+    def _web_sources_from_steps(formatted_steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        for s in formatted_steps:
+            data = s.get("data") or {}
+            if isinstance(data, dict) and data.get("web_sources"):
+                return list(data["web_sources"])
+        return []
+
     runs = [
         {
             "run_id": r.get("id"),
@@ -348,6 +355,7 @@ def get_thread(tenant_id: str, thread_id: str):
             "output_message": r.get("output_message"),
             "status": r.get("status"),
             "citations": r.get("citations") or [],
+            "web_sources": _web_sources_from_steps(steps_by_run.get(str(r.get("id")), [])),
             "created_at": r.get("created_at"),
             "steps": steps_by_run.get(str(r.get("id")), []),
         }
@@ -542,6 +550,7 @@ def agent_chat(tenant_id: str):
                     max_chars_per_turn=max_chars,
                 )
 
+                web_grounding_enabled = bool(ai_config.get("web_grounding_enabled") or False)
                 graph = build_agent_graph(
                     client,
                     run_id,
@@ -549,6 +558,7 @@ def agent_chat(tenant_id: str):
                     chat_model=chat_model,
                     user_id=user_id,
                     langsmith_parent=ls_root,
+                    web_grounding_enabled=web_grounding_enabled,
                 )
 
                 insert_agent_run(
@@ -626,6 +636,7 @@ def agent_chat(tenant_id: str):
 
                 answer = str(accumulated.get("answer") or "")
                 citations = list(accumulated.get("citations") or [])
+                web_sources = list(accumulated.get("web_sources") or [])
                 step_rows = list_agent_steps_for_run(client, run_id)
                 steps = format_agent_steps_for_ui(step_rows)
 
@@ -667,6 +678,7 @@ def agent_chat(tenant_id: str):
                     "thread_id": thread_id,
                     "answer": answer,
                     "citations": citations,
+                    "web_sources": web_sources,
                     "steps": steps,
                     "langsmith_trace_id": trace_id,
                     "langsmith_enabled": langsmith_api_key_configured(),

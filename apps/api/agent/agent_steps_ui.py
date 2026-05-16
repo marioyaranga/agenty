@@ -28,6 +28,10 @@ GRAPH_LABELS: dict[str, tuple[str, str]] = {
         "Ejecutando herramienta",
         "Realizando una acción en tu espacio de trabajo.",
     ),
+    "web_grounding": (
+        "Búsqueda web",
+        "Consulté Google Search para complementar la respuesta con información pública.",
+    ),
 }
 
 TOOL_LABELS: dict[str, tuple[str, str]] = {
@@ -154,6 +158,10 @@ def _ui_detail_from_payload(step_key: str, payload: dict[str, Any]) -> str:
     if step_key == "respond_no_context":
         return "Sin contexto RAG suficiente."
 
+    if step_key == "web_grounding":
+        n = payload.get("sources_count")
+        return f"{n} fuente(s) de Google Search." if n else "Fuentes de Google Search."
+
     safe_bits: list[str] = []
     for k, v in payload.items():
         if k in _SENSITIVE_KEYS:
@@ -198,7 +206,7 @@ def _graph_step_row(row: dict[str, Any]) -> dict[str, Any] | None:
         step_key,
         (step_key.replace("_", " ").capitalize(), ""),
     )
-    return {
+    step: dict[str, Any] = {
         "id": f"{row.get('step_index')}-{step_key}",
         "kind": "graph",
         "label": label,
@@ -207,6 +215,13 @@ def _graph_step_row(row: dict[str, Any]) -> dict[str, Any] | None:
         "detail": _ui_detail_from_payload(step_key, payload) or None,
         "step_index": int(row.get("step_index") or 0),
     }
+    if step_key == "web_grounding":
+        sources = [
+            s for s in (payload.get("sources") or [])
+            if isinstance(s, dict) and s.get("uri")
+        ]
+        step["data"] = {"web_sources": sources}
+    return step
 
 
 def tool_detail_from_result(tool_name: str, result: dict[str, Any]) -> str:

@@ -6,6 +6,8 @@ export type AgentRunStepStatus =
   | "completed"
   | "skipped";
 
+export type WebSource = { uri: string; title: string };
+
 export type AgentRunStep = {
   id: string;
   kind: AgentStepKind;
@@ -15,6 +17,7 @@ export type AgentRunStep = {
   detail?: string | null;
   step_index: number;
   tool_name?: string | null;
+  data?: { web_sources?: WebSource[] } | null;
 };
 
 /** @deprecated Usar AgentRunStep */

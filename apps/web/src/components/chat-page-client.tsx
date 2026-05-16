@@ -35,6 +35,7 @@ function runsToMessages(runs: ThreadRun[]): ThreadMessageLike[] {
       metadata: {
         custom: {
           citations: run.citations ?? [],
+          web_sources: run.web_sources ?? [],
           run_id: run.run_id,
           steps: run.steps ?? [],
         },

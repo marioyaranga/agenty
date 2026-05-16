@@ -24,6 +24,7 @@ type AgentSseEvent =
       thread_id: string;
       answer: string;
       citations: unknown[];
+      web_sources?: Array<{ uri: string; title: string }>;
       steps: AgentRunStep[];
       langsmith_trace_id: string | null;
       langsmith_enabled: boolean;
@@ -165,12 +166,14 @@ export function useWorkyAiRuntime(
                 callbacks?.onThreadUpdate?.(event.thread_id);
                 if (mentionsRef) mentionsRef.current = [];
                 const steps = Array.isArray(event.steps) ? event.steps : [];
+                const webSources = Array.isArray(event.web_sources) ? event.web_sources : [];
                 callbacks?.onRunComplete(turnIndex, steps);
                 yield {
                   content: [{ type: "text" as const, text: event.answer }],
                   metadata: {
                     custom: {
                       citations: event.citations,
+                      web_sources: webSources,
                       run_id: event.run_id,
                       thread_id: event.thread_id,
                       steps,

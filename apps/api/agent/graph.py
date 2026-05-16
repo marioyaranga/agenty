@@ -30,6 +30,7 @@ class AgentGraphState(TypedDict, total=False):
     matches: list[dict[str, Any]]
     answer: str
     citations: list[dict[str, Any]]
+    web_sources: list[dict[str, Any]]  # fuentes de Google Search Grounding
     # Documentos mencionados explícitamente con @ (contenido pre-cargado)
     pinned_docs: list[dict[str, Any]]
     # Tool calling state
@@ -87,6 +88,7 @@ def build_agent_graph(
     chat_model: str,
     user_id: str = "",
     langsmith_parent: Any | None = None,
+    web_grounding_enabled: bool = False,
 ) -> Any:
     """Compila el grafo con routing condicional, recuperación semántica y tool calling."""
     min_rpc_sim = _read_float("AGENT_MIN_SIMILARITY", 0.22)
@@ -231,6 +233,7 @@ def build_agent_graph(
                 pinned_docs=list(state.get("pinned_docs") or []),
                 api_key=gemini_api_key,
                 model=chat_model,
+                enable_web_search=web_grounding_enabled,
             )
             tool_name = result.get("tool_name")
             tool_args = result.get("tool_args")
@@ -251,6 +254,7 @@ def build_agent_graph(
 
             text = str(result.get("text") or "")
             cites = list(result.get("citations") or [])
+            web_src = list(result.get("web_sources") or [])
             insert_agent_step(
                 client,
                 run_id=run_id,
@@ -258,11 +262,20 @@ def build_agent_graph(
                 step_index=_next_step_index(),
                 payload={"model": chat_model, "citations_count": len(cites)},
             )
+            if web_src:
+                insert_agent_step(
+                    client,
+                    run_id=run_id,
+                    step_key="web_grounding",
+                    step_index=_next_step_index(),
+                    payload={"sources_count": len(web_src), "sources": web_src[:20]},
+                )
             holder["outputs"] = {
                 "answer_chars": len(text),
                 "citations_count": len(cites),
+                "web_sources_count": len(web_src),
             }
-        return {"answer": text, "citations": cites, "pending_tool_name": None}
+        return {"answer": text, "citations": cites, "web_sources": web_src, "pending_tool_name": None}
 
     def route_after_generate(
         state: AgentGraphState,
@@ -290,6 +303,7 @@ def build_agent_graph(
         "tool_seo_serp_organic",
         "tool_seo_ranked_keywords_for_url",
         "tool_seo_keywords_for_url",
+        "web_grounding",
     })
 
     def execute_tool(state: AgentGraphState) -> dict[str, Any]:
