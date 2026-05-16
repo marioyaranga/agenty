@@ -20,6 +20,23 @@ export type AgentRuntimeCallbacks = {
   onStepProgress?: (node: string, label: string, description: string, status: "running" | "done") => void;
 };
 
+function generateAck(message: string): string {
+  const t = message.trim();
+  if (/keyword|palabras?\s*clave|seo|serp/i.test(t))
+    return "Claro, voy a analizar esas keywords ahora mismo.";
+  if (/https?:\/\/|www\.|\.com\b|\.net\b|\.org\b|\burl\b/i.test(t))
+    return "Por supuesto, dame un momento que reviso esas URLs.";
+  if (/resumi|síntesis|sintetiza/i.test(t))
+    return "Entendido, preparo un resumen para vos.";
+  if (/\bcrea\b|\bgenera\b|escrib[ei]|redact/i.test(t))
+    return "Perfecto, lo estoy preparando.";
+  if (/busca|encuentra/i.test(t))
+    return "Enseguida busco eso en tus documentos.";
+  if (/\?$/.test(t.trim()))
+    return "Buena pregunta, déjame investigar eso.";
+  return "Entendido, dame un momento.";
+}
+
 export function useWorkyAiRuntime(
   tenantId: string,
   callbacks?: AgentRuntimeCallbacks,
@@ -30,7 +47,7 @@ export function useWorkyAiRuntime(
   const threadIdRef = useRef<string | null>(initialThreadId ?? null);
 
   const adapter: ChatModelAdapter = {
-    async run({ messages, abortSignal }) {
+    async *run({ messages, abortSignal }) {
       const last = messages.at(-1);
       const userText =
         last?.content
@@ -40,15 +57,15 @@ export function useWorkyAiRuntime(
 
       const turnIndex = messages.filter((m) => m.role === "assistant").length;
 
+      // Reconocimiento inmediato — aparece antes de que el fetch siquiera empiece
+      yield { content: [{ type: "text" as const, text: generateAck(userText) }] };
+
       callbacks?.onRunStart();
 
       const supabase = createClient();
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData.session?.access_token;
-      if (!token) {
-        callbacks?.onRunEnd();
-        throw new Error("Sin sesión activa. Iniciá sesión de nuevo.");
-      }
+      if (!token) throw new Error("Sin sesión activa. Iniciá sesión de nuevo.");
 
       const apiBase = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/+$/, "");
 
@@ -97,13 +114,11 @@ export function useWorkyAiRuntime(
           throw new Error(detail ? `${base} (${detail})` : base);
         }
 
-        // Parsear stream SSE
         if (!res.body) throw new Error("La respuesta no tiene cuerpo.");
 
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
-        let finalResult: { content: { type: "text"; text: string }[]; metadata: object } | null = null;
 
         try {
           while (true) {
@@ -136,7 +151,7 @@ export function useWorkyAiRuntime(
                 if (mentionsRef) mentionsRef.current = [];
                 const steps = Array.isArray(event.steps) ? event.steps : [];
                 callbacks?.onRunComplete(turnIndex, steps);
-                finalResult = {
+                yield {
                   content: [{ type: "text" as const, text: event.answer }],
                   metadata: {
                     custom: {
@@ -155,9 +170,6 @@ export function useWorkyAiRuntime(
         } finally {
           reader.releaseLock?.();
         }
-
-        if (!finalResult) throw new Error("La respuesta del agente está incompleta.");
-        return finalResult;
       } finally {
         callbacks?.onRunEnd();
       }
