@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, type MutableRefObject } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  type MutableRefObject,
+  type RefObject,
+} from "react";
 import { useLocalRuntime, type ChatModelAdapter, type ThreadMessageLike } from "@assistant-ui/react";
 import { createClient } from "@/lib/supabase/client";
 import type { AgentRunStep } from "@/lib/types/agent-steps";
@@ -49,14 +55,12 @@ export type AgentRuntimeCallbacks = {
 
 export function useWorkyAiRuntime(
   tenantId: string,
-  callbacks?: AgentRuntimeCallbacks,
+  callbacksRef: RefObject<AgentRuntimeCallbacks | undefined>,
   initialMessages?: readonly ThreadMessageLike[],
   initialThreadId?: string | null,
   mentionsRef?: MutableRefObject<Mention[]>,
 ) {
   const threadIdRef = useRef<string | null>(initialThreadId ?? null);
-  const callbacksRef = useRef(callbacks);
-  callbacksRef.current = callbacks;
 
   useEffect(() => {
     threadIdRef.current = initialThreadId ?? null;
@@ -66,7 +70,6 @@ export function useWorkyAiRuntime(
   // __internal_load() en bucle y React error #185 (max update depth).
   const adapter = useMemo((): ChatModelAdapter => ({
     async *run({ messages, abortSignal }) {
-      const callbacks = callbacksRef.current;
       const last = messages.at(-1);
       const userText =
         last?.content
@@ -76,7 +79,8 @@ export function useWorkyAiRuntime(
 
       const turnIndex = messages.filter((m) => m.role === "assistant").length;
 
-      callbacks?.onRunStart?.();
+      // Evita setState síncrono anidado con assistant-ui al enviar (React #185).
+      queueMicrotask(() => callbacksRef.current?.onRunStart?.());
 
       const supabase = createClient();
       const { data: sessionData } = await supabase.auth.getSession();
@@ -158,11 +162,11 @@ export function useWorkyAiRuntime(
 
               if (event.type === "started") {
                 threadIdRef.current = event.thread_id;
-                callbacks?.onThreadUpdate?.(event.thread_id);
+                callbacksRef.current?.onThreadUpdate?.(event.thread_id);
               } else if (event.type === "step") {
-                callbacks?.onStepProgress?.(event.node, event.label, event.description, event.status);
+                callbacksRef.current?.onStepProgress?.(event.node, event.label, event.description, event.status);
               } else if (event.type === "tool") {
-                callbacks?.onToolProgress?.(
+                callbacksRef.current?.onToolProgress?.(
                   event.tool_name,
                   event.label,
                   event.description,
@@ -172,11 +176,11 @@ export function useWorkyAiRuntime(
                 );
               } else if (event.type === "done") {
                 threadIdRef.current = event.thread_id;
-                callbacks?.onThreadUpdate?.(event.thread_id);
+                callbacksRef.current?.onThreadUpdate?.(event.thread_id);
                 if (mentionsRef) mentionsRef.current = [];
                 const steps = Array.isArray(event.steps) ? event.steps : [];
                 const webSources = Array.isArray(event.web_sources) ? event.web_sources : [];
-                callbacks?.onRunComplete?.(turnIndex, steps);
+                callbacksRef.current?.onRunComplete?.(turnIndex, steps);
                 yield {
                   content: [{ type: "text" as const, text: event.answer }],
                   metadata: {
@@ -198,11 +202,15 @@ export function useWorkyAiRuntime(
           reader.releaseLock?.();
         }
       } finally {
-        callbacks?.onRunEnd?.();
+        callbacksRef.current?.onRunEnd?.();
       }
     },
-  }), [tenantId]);
+  }), [tenantId, callbacksRef]);
 
-  const runtime = useLocalRuntime(adapter, { initialMessages });
+  const runtimeOptions = useMemo(
+    () => ({ initialMessages: initialMessages ?? [] }),
+    [initialMessages],
+  );
+  const runtime = useLocalRuntime(adapter, runtimeOptions);
   return { runtime, threadIdRef };
 }

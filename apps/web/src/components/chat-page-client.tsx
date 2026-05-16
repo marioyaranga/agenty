@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AssistantRuntimeProvider, type ThreadMessageLike } from "@assistant-ui/react";
 import { useWorkspace } from "@/lib/contexts/workspace-context";
@@ -12,7 +12,7 @@ import { getThread, type ThreadRun } from "@/lib/assistant-ui/threads-api";
 import { Thread } from "@/components/assistant-ui/thread";
 import { ChatHeader } from "@/components/chat/chat-header";
 import type { TenantOption } from "@/lib/types/tenant";
-import type { AgentRunStep } from "@/lib/types/agent-steps";
+import type { AgentRuntimeCallbacks } from "@/lib/assistant-ui/workyai-runtime";
 
 type HydratedThread = {
   threadId: string | null;
@@ -174,20 +174,40 @@ function ChatInner({
   onNewChat: () => void;
   onNewThread: (threadId: string) => void;
 }) {
-  const { onRunStart, onRunComplete, onRunEnd, onStepProgress, onToolProgress } =
-    useAgentSteps();
+  const agentSteps = useAgentSteps();
+  const agentStepsRef = useRef(agentSteps);
+  agentStepsRef.current = agentSteps;
+
   const { threads, upsertThread } = useChatThreads();
   const threadsRef = useRef(threads);
   threadsRef.current = threads;
-  const { mentionsRef, clearMentions } = useMentions();
+  const upsertThreadRef = useRef(upsertThread);
+  upsertThreadRef.current = upsertThread;
 
-  const handleThreadUpdate = useCallback(
-    (threadId: string) => {
-      onNewThread(threadId);
+  const tenantIdRef = useRef(tenantId);
+  tenantIdRef.current = tenantId;
+  const onNewThreadRef = useRef(onNewThread);
+  onNewThreadRef.current = onNewThread;
+
+  const { mentionsRef, clearMentions } = useMentions();
+  const clearMentionsRef = useRef(clearMentions);
+  clearMentionsRef.current = clearMentions;
+
+  const callbacksRef = useRef<AgentRuntimeCallbacks>({
+    onRunStart: () => agentStepsRef.current.onRunStart(),
+    onRunComplete: (turnIndex, steps) => {
+      agentStepsRef.current.onRunComplete(turnIndex, steps);
+      clearMentionsRef.current();
+    },
+    onRunEnd: () => agentStepsRef.current.onRunEnd(),
+    onStepProgress: (...args) => agentStepsRef.current.onStepProgress(...args),
+    onToolProgress: (...args) => agentStepsRef.current.onToolProgress(...args),
+    onThreadUpdate: (threadId) => {
+      onNewThreadRef.current(threadId);
       if (threadsRef.current.some((t) => t.id === threadId)) return;
-      getThread(tenantId, threadId)
+      getThread(tenantIdRef.current, threadId)
         .then((detail) =>
-          upsertThread({
+          upsertThreadRef.current({
             id: detail.id,
             title: detail.title,
             created_at: detail.created_at,
@@ -196,28 +216,44 @@ function ChatInner({
         )
         .catch(() => {});
     },
-    [tenantId, upsertThread, onNewThread],
-  );
+  });
 
-  const handleRunComplete = useCallback(
-    (turnIndex: number, steps: AgentRunStep[]) => {
-      onRunComplete(turnIndex, steps);
-      clearMentions();
-    },
-    [onRunComplete, clearMentions],
+  return (
+    <ChatRuntimeShell
+      tenantId={tenantId}
+      activeThreadId={activeThreadId}
+      threadTitleHint={threadTitleHint}
+      initialMessages={initialMessages}
+      onNewChat={onNewChat}
+      callbacksRef={callbacksRef}
+      mentionsRef={mentionsRef}
+    />
   );
+}
+
+const ChatRuntimeShell = memo(function ChatRuntimeShell({
+  tenantId,
+  activeThreadId,
+  threadTitleHint,
+  initialMessages,
+  onNewChat,
+  callbacksRef,
+  mentionsRef,
+}: {
+  tenantId: string;
+  activeThreadId: string | null;
+  threadTitleHint: string | null;
+  initialMessages: readonly ThreadMessageLike[];
+  onNewChat: () => void;
+  callbacksRef: React.RefObject<AgentRuntimeCallbacks>;
+  mentionsRef: ReturnType<typeof useMentions>["mentionsRef"];
+}) {
+  const stableMessages = useMemo(() => initialMessages, [initialMessages]);
 
   const { runtime } = useWorkyAiRuntime(
     tenantId,
-    {
-      onRunStart,
-      onRunComplete: handleRunComplete,
-      onRunEnd,
-      onThreadUpdate: handleThreadUpdate,
-      onStepProgress,
-      onToolProgress,
-    },
-    initialMessages,
+    callbacksRef,
+    stableMessages,
     activeThreadId,
     mentionsRef,
   );
@@ -231,7 +267,7 @@ function ChatInner({
       />
     </AssistantRuntimeProvider>
   );
-}
+});
 
 function ChatWithRuntime({
   activeThreadId,
