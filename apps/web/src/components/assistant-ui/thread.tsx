@@ -11,9 +11,12 @@ import {
 import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
 import remarkGfm from "remark-gfm";
 import { ArrowUp, StopCircle, ChevronDown, FileText } from "lucide-react";
+import { ScrollArea as ScrollAreaPrimitive } from "@base-ui/react/scroll-area";
 import { cn } from "@/lib/utils";
-import { useOptionalSeoSteps } from "@/lib/contexts/seo-steps-context";
-import { SeoSubagentsPanel } from "@/components/seo/seo-subagents-panel";
+import { ScrollBar } from "@/components/ui/scroll-area";
+import { useOptionalAgentSteps } from "@/lib/contexts/agent-steps-context";
+import { AgentStepsPanel } from "@/components/chat/agent-steps-panel";
+import type { AgentRunStep } from "@/lib/types/agent-steps";
 import { useMentions } from "@/lib/contexts/mentions-context";
 import { useWorkspace } from "@/lib/contexts/workspace-context";
 import { useViewer } from "@/lib/contexts/viewer-context";
@@ -54,22 +57,38 @@ export function Thread({ className }: { className?: string }) {
     <ThreadPrimitive.Root
       className={cn("relative flex h-full min-w-0 flex-col overflow-hidden", className)}
     >
-      <ThreadPrimitive.Viewport className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden px-4 py-6">
-        <ThreadPrimitive.Empty>
-          <WelcomeScreen />
-        </ThreadPrimitive.Empty>
+      <ScrollAreaPrimitive.Root
+        data-slot="scroll-area"
+        className="relative min-h-0 flex-1"
+      >
+        <ThreadPrimitive.Viewport
+          asChild
+          className={cn(
+            "flex min-w-0 flex-col gap-4 px-4 py-6",
+            "size-full rounded-[inherit] transition-[color,box-shadow] outline-none",
+            "focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1",
+          )}
+        >
+          <ScrollAreaPrimitive.Viewport data-slot="scroll-area-viewport">
+            <ThreadPrimitive.Empty>
+              <WelcomeScreen />
+            </ThreadPrimitive.Empty>
 
-        <ThreadPrimitive.Messages
-          components={{
-            UserMessage,
-            AssistantMessage,
-          }}
-        />
+            <ThreadPrimitive.Messages
+              components={{
+                UserMessage,
+                AssistantMessage,
+              }}
+            />
 
-        <RunningStepsInline />
+            <RunningStepsInline />
 
-        <div className="min-h-8 shrink-0" aria-hidden />
-      </ThreadPrimitive.Viewport>
+            <div className="min-h-8 shrink-0" aria-hidden />
+          </ScrollAreaPrimitive.Viewport>
+        </ThreadPrimitive.Viewport>
+        <ScrollBar />
+        <ScrollAreaPrimitive.Corner />
+      </ScrollAreaPrimitive.Root>
 
       <ThreadPrimitive.ScrollToBottom asChild>
         <button
@@ -91,12 +110,12 @@ export function Thread({ className }: { className?: string }) {
 // ---------------------------------------------------------------------------
 
 function RunningStepsInline() {
-  const steps = useOptionalSeoSteps();
+  const steps = useOptionalAgentSteps();
   if (!steps?.isRunning || !steps.activeSteps?.length) return null;
 
   return (
     <div className="flex w-full min-w-0 justify-start gap-3 pl-10">
-      <SeoSubagentsPanel steps={steps.activeSteps} defaultOpen />
+      <AgentStepsPanel steps={steps.activeSteps} defaultOpen />
     </div>
   );
 }
@@ -223,10 +242,20 @@ function UserTextPart() {
 // Mensaje del asistente
 // ---------------------------------------------------------------------------
 
+function useMessageCustomSteps(): AgentRunStep[] | undefined {
+  return useAuiState((s) => {
+    const meta = s.message.metadata as { custom?: { steps?: AgentRunStep[] } } | undefined;
+    const raw = meta?.custom?.steps;
+    return Array.isArray(raw) && raw.length > 0 ? raw : undefined;
+  });
+}
+
 function AssistantMessage() {
   const turnIndex = useAssistantTurnIndex();
-  const stepsCtx = useOptionalSeoSteps();
-  const steps = stepsCtx?.getStepsForTurn(turnIndex);
+  const stepsCtx = useOptionalAgentSteps();
+  const metadataSteps = useMessageCustomSteps();
+  const contextSteps = stepsCtx?.getStepsForTurn(turnIndex);
+  const steps = metadataSteps ?? contextSteps;
 
   return (
     <MessagePrimitive.Root className="flex w-full min-w-0 justify-start gap-3">
@@ -236,7 +265,7 @@ function AssistantMessage() {
 
       <div className="flex min-w-0 max-w-[85%] flex-col gap-2">
         {steps && steps.length > 0 ? (
-          <SeoSubagentsPanel steps={steps} defaultOpen={false} />
+          <AgentStepsPanel steps={steps} defaultOpen={false} />
         ) : null}
         <div className="min-w-0 rounded-2xl rounded-tl-sm border bg-card px-4 py-3 shadow-sm">
           <MessagePrimitive.Parts
@@ -376,7 +405,7 @@ function Composer() {
         <div className="flex items-end gap-2 rounded-2xl border bg-background px-4 py-2 shadow-sm focus-within:ring-1 focus-within:ring-ring">
           <ComposerPrimitive.Input
             autoFocus
-            placeholder="Preguntá sobre tus docs, escribí @nombre para adjuntar un archivo…"
+            placeholder="En qué puedo ayudarte"
             rows={1}
             onKeyUp={handleKeyUp}
             className="max-h-40 min-h-[1.5rem] flex-1 resize-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"

@@ -1,28 +1,18 @@
-export type SeoSubagentPhase =
-  | "parse" | "volume" | "serp" | "format" | "keywords_for_url"
-  | "retrieve" | "rewrite_query" | "generate" | "execute_tool" | "respond_no_context";
+/** @deprecated Usar `@/lib/types/agent-steps`. */
+export type {
+  AgentRunStep as SeoSubagentStep,
+  AgentRunStepStatus as SeoSubagentStepStatus,
+  AgentStepKind,
+} from "@/lib/types/agent-steps";
 
-export type SeoSubagentStepStatus =
-  | "pending"
-  | "running"
-  | "completed"
-  | "skipped";
-
-export type SeoSubagentStep = {
-  id: SeoSubagentPhase;
-  label: string;
-  description: string;
-  status: SeoSubagentStepStatus;
-  detail?: string | null;
-  step_index: number;
-};
+export type SeoSubagentPhase = string;
 
 export type SeoChatResponse = {
   run_id: string;
   thread_id: string;
   answer: string;
   citations: unknown[];
-  steps: SeoSubagentStep[];
+  steps: import("@/lib/types/agent-steps").AgentRunStep[];
   langsmith_trace_id: string | null;
   langsmith_enabled: boolean;
 };

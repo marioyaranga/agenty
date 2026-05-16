@@ -3,22 +3,48 @@
 import { useRef, type MutableRefObject } from "react";
 import { useLocalRuntime, type ChatModelAdapter, type ThreadMessageLike } from "@assistant-ui/react";
 import { createClient } from "@/lib/supabase/client";
-import type { SeoSubagentStep } from "@/lib/types/seo-agent";
+import type { AgentRunStep } from "@/lib/types/agent-steps";
 import type { Mention } from "@/lib/contexts/mentions-context";
 
 type AgentSseEvent =
   | { type: "ack"; text: string }
   | { type: "started"; run_id: string; thread_id: string }
   | { type: "step"; node: string; label: string; description: string; status: "running" | "done" }
-  | { type: "done"; run_id: string; thread_id: string; answer: string; citations: unknown[]; steps: SeoSubagentStep[]; langsmith_trace_id: string | null; langsmith_enabled: boolean }
+  | {
+      type: "tool";
+      tool_name: string;
+      label: string;
+      description: string;
+      status: "running" | "done";
+      ok?: boolean;
+      detail?: string | null;
+    }
+  | {
+      type: "done";
+      run_id: string;
+      thread_id: string;
+      answer: string;
+      citations: unknown[];
+      steps: AgentRunStep[];
+      langsmith_trace_id: string | null;
+      langsmith_enabled: boolean;
+    }
   | { type: "error"; detail: string; run_id?: string; thread_id?: string };
 
 export type AgentRuntimeCallbacks = {
   onRunStart: () => void;
-  onRunComplete: (turnIndex: number, steps: SeoSubagentStep[]) => void;
+  onRunComplete: (turnIndex: number, steps: AgentRunStep[]) => void;
   onRunEnd: () => void;
   onThreadUpdate?: (threadId: string) => void;
   onStepProgress?: (node: string, label: string, description: string, status: "running" | "done") => void;
+  onToolProgress?: (
+    toolName: string,
+    label: string,
+    description: string,
+    status: "running" | "done",
+    ok?: boolean,
+    detail?: string | null,
+  ) => void;
 };
 
 export function useWorkyAiRuntime(
@@ -122,13 +148,21 @@ export function useWorkyAiRuntime(
               }
 
               if (event.type === "ack") {
-                // Reconocimiento generado por Gemini — aparece antes que los pasos
                 yield { content: [{ type: "text" as const, text: event.text }] };
               } else if (event.type === "started") {
                 threadIdRef.current = event.thread_id;
                 callbacks?.onThreadUpdate?.(event.thread_id);
               } else if (event.type === "step") {
                 callbacks?.onStepProgress?.(event.node, event.label, event.description, event.status);
+              } else if (event.type === "tool") {
+                callbacks?.onToolProgress?.(
+                  event.tool_name,
+                  event.label,
+                  event.description,
+                  event.status,
+                  event.ok,
+                  event.detail,
+                );
               } else if (event.type === "done") {
                 threadIdRef.current = event.thread_id;
                 callbacks?.onThreadUpdate?.(event.thread_id);

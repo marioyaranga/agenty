@@ -99,6 +99,21 @@ def list_agent_steps_for_run(client: Client, run_id: str) -> list[dict[str, Any]
     return list(data) if isinstance(data, list) else []
 
 
+def list_agent_steps_for_runs(client: Client, run_ids: list[str]) -> list[dict[str, Any]]:
+    """Pasos de varios runs en una sola consulta, ordenados por run y step_index."""
+    if not run_ids:
+        return []
+    res = (
+        client.table("agent_steps")
+        .select("run_id, step_key, step_index, payload, created_at")
+        .in_("run_id", run_ids)
+        .order("step_index", desc=False)
+        .execute()
+    )
+    data = getattr(res, "data", None)
+    return list(data) if isinstance(data, list) else []
+
+
 def finalize_agent_run(
     client: Client,
     *,

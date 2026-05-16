@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import type { AgentRunStep } from "@/lib/types/agent-steps";
 
 export type ThreadItem = {
   id: string;
@@ -14,6 +15,7 @@ export type ThreadRun = {
   status: string;
   citations: unknown[];
   created_at: string;
+  steps?: AgentRunStep[];
 };
 
 export type ThreadDetail = ThreadItem & { runs: ThreadRun[] };

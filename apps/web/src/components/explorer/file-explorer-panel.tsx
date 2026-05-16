@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useElementSize } from "@/lib/hooks/use-element-size";
 import { Tree, type NodeApi, type NodeRendererProps } from "react-arborist";
 import {
   ChevronRight,
@@ -11,11 +12,34 @@ import {
   Plus,
   FolderPlus,
   Loader2,
+  RefreshCw,
   Upload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/contexts/workspace-context";
 import { useViewer } from "@/lib/contexts/viewer-context";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuSkeleton,
+} from "@/components/ui/sidebar";
 import {
   fetchTree,
   createFolder,
@@ -33,7 +57,6 @@ import {
   uploadDocumentMultipart,
   DOCUMENT_UPLOAD_ACCEPT,
 } from "@/lib/api/documents";
-import { SidebarMenuSkeleton } from "@/components/ui/sidebar";
 
 const EDITOR_ROLES = new Set(["editor", "admin", "owner"]);
 
@@ -156,6 +179,7 @@ type CtxMenu = {
 export function FileExplorerPanel() {
   const {
     activeTenantId,
+    selectedDocumentId,
     setSelectedDocumentId,
     bootstrapTick,
     tenants,
@@ -185,6 +209,11 @@ export function FileExplorerPanel() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const {
+    ref: treeViewportRef,
+    width: treeWidth,
+    height: treeHeight,
+  } = useElementSize<HTMLDivElement>();
 
   const loadTree = useCallback(async () => {
     if (!activeTenantId) return;
@@ -416,113 +445,137 @@ export function FileExplorerPanel() {
   }
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
-      {/* Header */}
-      <div className="flex shrink-0 items-center justify-between border-b px-2 py-1.5">
-        <span className="text-xs font-semibold text-sidebar-foreground">
+    <SidebarGroup className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
+      <div className="flex shrink-0 items-center justify-between gap-1 border-b px-2 py-1.5">
+        <SidebarGroupLabel className="h-auto px-0 text-xs font-semibold text-sidebar-foreground opacity-100">
           Archivos
-        </span>
-        <div className="flex gap-0.5">
-          <button
-            type="button"
-            title="Nueva carpeta"
-            onClick={() => {
-              setNewItemParentId(null);
-              setDialogInput("");
-              setNewFolderDialogOpen(true);
-            }}
-            className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-          >
-            <FolderPlus size={13} />
-          </button>
-          <button
-            type="button"
-            title="Nuevo archivo"
-            onClick={() => {
-              setNewItemParentId(null);
-              setDialogInput("");
-              setNewFileDialogOpen(true);
-            }}
-            className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-          >
-            <Plus size={13} />
-          </button>
-          <button
-            type="button"
-            title={
-              canMutate
+        </SidebarGroupLabel>
+        <div className="flex items-center gap-0.5">
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label="Nueva carpeta"
+                  onClick={() => {
+                    setNewItemParentId(null);
+                    setDialogInput("");
+                    setNewFolderDialogOpen(true);
+                  }}
+                >
+                  <FolderPlus className="size-3.5" />
+                </Button>
+              }
+            />
+            <TooltipContent>Nueva carpeta</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label="Nuevo archivo"
+                  onClick={() => {
+                    setNewItemParentId(null);
+                    setDialogInput("");
+                    setNewFileDialogOpen(true);
+                  }}
+                >
+                  <Plus className="size-3.5" />
+                </Button>
+              }
+            />
+            <TooltipContent>Nuevo archivo</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label="Subir archivo"
+                  disabled={!canMutate}
+                  onClick={() => {
+                    if (!canMutate) return;
+                    openUploadDialog(null, null);
+                  }}
+                >
+                  <Upload className="size-3.5" />
+                </Button>
+              }
+            />
+            <TooltipContent>
+              {canMutate
                 ? "Subir archivo desde tu equipo"
-                : "Se requiere rol editor para subir"
-            }
-            disabled={!canMutate}
-            onClick={() => {
-              if (!canMutate) return;
-              openUploadDialog(null, null);
-            }}
-            className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
-          >
-            <Upload size={13} />
-          </button>
-          <button
-            type="button"
-            title="Refrescar"
-            onClick={loadTree}
-            className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-          >
-            {loading ? (
-              <Loader2 size={12} className="animate-spin" />
-            ) : (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-                <path d="M21 3v5h-5" />
-                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
-                <path d="M8 16H3v5" />
-              </svg>
-            )}
-          </button>
+                : "Se requiere rol editor para subir"}
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label="Refrescar"
+                  onClick={() => void loadTree()}
+                >
+                  {loading ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="size-3.5" />
+                  )}
+                </Button>
+              }
+            />
+            <TooltipContent>Refrescar</TooltipContent>
+          </Tooltip>
         </div>
       </div>
 
-      {/* Árbol */}
-      <div className="min-h-0 flex-1 overflow-auto">
-        {loading && treeData.length === 0 ? (
-          <div className="px-2 py-2 space-y-1">
-            <SidebarMenuSkeleton showIcon />
-            <SidebarMenuSkeleton showIcon />
-            <SidebarMenuSkeleton showIcon />
-          </div>
-        ) : (
-          <Tree<TreeNode>
-            data={treeData}
-            onMove={handleMove}
-            onRename={handleRename}
-            onActivate={handleOpenDocument}
-            width="100%"
-            indent={16}
-            rowHeight={28}
-            className="!overflow-visible"
-          >
-            {(props) => (
-              <NodeRenderer
-                {...props}
-                onContextMenuRequest={(x, y, node) =>
-                  setCtxMenu({ x, y, node })
-                }
-              />
-            )}
-          </Tree>
-        )}
-      </div>
+      <SidebarGroupContent className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div ref={treeViewportRef} className="min-h-0 flex-1 overflow-hidden">
+          {loading && treeData.length === 0 ? (
+            <SidebarMenu className="gap-1 px-2 py-2">
+              <SidebarMenuSkeleton showIcon />
+              <SidebarMenuSkeleton showIcon />
+              <SidebarMenuSkeleton showIcon />
+            </SidebarMenu>
+          ) : treeData.length === 0 ? (
+            <div className="flex items-center justify-center px-3 py-6">
+              <p className="text-center text-xs text-muted-foreground">
+                Sin archivos. Creá una carpeta o subí un documento.
+              </p>
+            </div>
+          ) : treeWidth > 0 && treeHeight > 0 ? (
+            <Tree<TreeNode>
+              data={treeData}
+              onMove={handleMove}
+              onRename={handleRename}
+              onActivate={handleOpenDocument}
+              width={treeWidth}
+              height={treeHeight}
+              indent={12}
+              rowHeight={28}
+            >
+              {(props) => (
+                <NodeRenderer
+                  {...props}
+                  selectedDocumentId={selectedDocumentId}
+                  onContextMenuRequest={(x, y, node) =>
+                    setCtxMenu({ x, y, node })
+                  }
+                />
+              )}
+            </Tree>
+          ) : null}
+        </div>
+      </SidebarGroupContent>
 
       {/* Context menu */}
       {ctxMenu && (
@@ -654,7 +707,7 @@ export function FileExplorerPanel() {
         }}
         loading={savingDoc}
       />
-    </div>
+    </SidebarGroup>
   );
 }
 
@@ -665,8 +718,10 @@ function NodeRenderer({
   node,
   style,
   dragHandle,
+  selectedDocumentId,
   onContextMenuRequest,
 }: NodeRendererProps<TreeNode> & {
+  selectedDocumentId: string | null;
   onContextMenuRequest: (x: number, y: number, node: NodeApi<TreeNode>) => void;
 }) {
   const isFolder = node.data.type === "folder";
@@ -685,56 +740,67 @@ function NodeRenderer({
       ? displayOnlyExtensionFromMime(node.data.mimeType)
       : "";
 
+  const isActive =
+    node.isSelected ||
+    (!isFolder && node.data.id === selectedDocumentId);
+
   return (
     <div
       ref={dragHandle}
       style={style}
-      className={cn(
-        "flex cursor-pointer select-none items-center gap-1 rounded-md px-1.5 py-0.5 text-xs",
-        "text-sidebar-foreground hover:bg-accent/60",
-        node.isSelected && "bg-accent font-medium",
-      )}
-      onClick={() => {
-        if (isFolder) node.toggle();
-        else node.activate();
-      }}
-      onContextMenu={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        onContextMenuRequest(e.clientX, e.clientY, node);
-      }}
+      className="group/menu-item relative"
+      data-sidebar="menu-item"
     >
-      {isFolder && (
-        <ChevronRight
-          size={12}
-          className={cn(
-            "shrink-0 text-muted-foreground transition-transform",
-            node.isOpen && "rotate-90",
-          )}
-        />
-      )}
-      {!isFolder && <span className="w-3" />}
-      <Icon size={13} className="shrink-0 text-muted-foreground" />
       {node.isEditing ? (
-        <input
-          type="text"
-          autoFocus
-          defaultValue={node.data.name}
-          className="min-w-0 flex-1 rounded border bg-background px-1 text-xs outline-none"
-          onBlur={(e) => node.submit(e.currentTarget.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") node.submit(e.currentTarget.value);
-            if (e.key === "Escape") node.reset();
-          }}
-          onClick={(e) => e.stopPropagation()}
-        />
+        <div className="flex h-7 items-center px-2">
+          <Input
+            type="text"
+            autoFocus
+            defaultValue={node.data.name}
+            className="h-6 text-xs"
+            onBlur={(e) => node.submit(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") node.submit(e.currentTarget.value);
+              if (e.key === "Escape") node.reset();
+            }}
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
       ) : (
-        <span className="min-w-0 flex-1 flex min-h-0 items-center gap-0 overflow-hidden">
-          <span className="min-w-0 truncate">{node.data.name}</span>
-          {displayMimeExt ? (
-            <span className="shrink-0 text-muted-foreground">{displayMimeExt}</span>
-          ) : null}
-        </span>
+        <SidebarMenuButton
+          size="sm"
+          isActive={isActive}
+          className="h-7 text-xs"
+          onClick={() => {
+            if (isFolder) node.toggle();
+            else node.activate();
+          }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onContextMenuRequest(e.clientX, e.clientY, node);
+          }}
+        >
+          {isFolder ? (
+            <ChevronRight
+              className={cn(
+                "transition-transform",
+                node.isOpen && "rotate-90",
+              )}
+            />
+          ) : (
+            <span className="size-4 shrink-0" aria-hidden />
+          )}
+          <Icon />
+          <span className="flex min-w-0 flex-1 items-center gap-0 overflow-hidden">
+            <span className="min-w-0 truncate">{node.data.name}</span>
+            {displayMimeExt ? (
+              <span className="shrink-0 text-muted-foreground">
+                {displayMimeExt}
+              </span>
+            ) : null}
+          </span>
+        </SidebarMenuButton>
       )}
     </div>
   );
@@ -766,71 +832,83 @@ function UploadDocumentDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
-  if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="w-[min(100%,22rem)] rounded-xl border bg-background p-4 shadow-lg">
-        <h3 className="mb-3 text-sm font-semibold">Subir archivo</h3>
-        {folderLabel ? (
-          <p className="mb-2 text-xs text-muted-foreground">
-            Carpeta: <span className="text-foreground">{folderLabel}</span>
-          </p>
-        ) : (
-          <p className="mb-2 text-xs text-muted-foreground">
-            Se guardará en la raíz del explorador.
-          </p>
-        )}
-        <label className="mb-1 block text-xs text-muted-foreground" htmlFor="upload-doc-title">
-          Título en la app
-        </label>
-        <input
-          id="upload-doc-title"
-          type="text"
-          autoFocus
-          placeholder="Ej. Manual interno"
-          value={title}
-          onChange={(e) => onTitleChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") void onConfirm();
-            if (e.key === "Escape") onCancel();
-          }}
-          className="mb-3 w-full rounded-lg border bg-muted/30 px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
-        />
-        <label className="mb-1 block text-xs text-muted-foreground" htmlFor="upload-doc-file">
-          Archivo
-        </label>
-        <input
-          id="upload-doc-file"
-          type="file"
-          accept={DOCUMENT_UPLOAD_ACCEPT}
-          className="w-full max-w-full text-xs text-muted-foreground"
-          onChange={(e) => onFileChange(e.target.files?.[0] ?? null)}
-        />
-        {error ? (
-          <p className="mt-2 text-xs text-destructive" role="alert">
-            {error}
-          </p>
-        ) : null}
-        <div className="mt-3 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-lg px-3 py-1 text-xs text-muted-foreground hover:bg-accent"
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={() => void onConfirm()}
-            disabled={!title.trim() || !file || uploading}
-            className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50"
-          >
-            {uploading && <Loader2 size={11} className="animate-spin" />}
-            Subir
-          </button>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onCancel();
+      }}
+    >
+      <DialogContent className="sm:max-w-md" showCloseButton>
+        <DialogHeader>
+          <DialogTitle>Subir archivo</DialogTitle>
+          <DialogDescription>
+            {folderLabel
+              ? `Se guardará en la carpeta «${folderLabel}».`
+              : "Se guardará en la raíz del explorador."}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3">
+          <div className="grid gap-1.5">
+            <label
+              className="text-xs text-muted-foreground"
+              htmlFor="upload-doc-title"
+            >
+              Título en la app
+            </label>
+            <Input
+              id="upload-doc-title"
+              autoFocus
+              placeholder="Ej. Manual interno"
+              value={title}
+              onChange={(e) => onTitleChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void onConfirm();
+              }}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <label
+              className="text-xs text-muted-foreground"
+              htmlFor="upload-doc-file"
+            >
+              Archivo
+            </label>
+            <Input
+              id="upload-doc-file"
+              type="file"
+              accept={DOCUMENT_UPLOAD_ACCEPT}
+              className="text-xs text-muted-foreground file:mr-2 file:text-xs"
+              onChange={(e) => onFileChange(e.target.files?.[0] ?? null)}
+            />
+          </div>
+          {error ? (
+            <p className="text-xs text-destructive" role="alert">
+              {error}
+            </p>
+          ) : null}
         </div>
-      </div>
-    </div>
+        <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Cancelar
+          </Button>
+          <Button
+            type="button"
+            disabled={!title.trim() || !file || uploading}
+            onClick={() => void onConfirm()}
+          >
+            {uploading ? (
+              <>
+                <Loader2 className="size-3.5 animate-spin" />
+                Subiendo…
+              </>
+            ) : (
+              "Subir"
+            )}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -856,42 +934,46 @@ function SimpleInputDialog({
   onCancel: () => void;
   loading: boolean;
 }) {
-  if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="w-80 rounded-xl border bg-background p-4 shadow-lg">
-        <h3 className="mb-3 text-sm font-semibold">{title}</h3>
-        <input
-          type="text"
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onCancel();
+      }}
+    >
+      <DialogContent className="sm:max-w-md" showCloseButton>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        <Input
           autoFocus
           placeholder={placeholder}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") void onConfirm();
-            if (e.key === "Escape") onCancel();
           }}
-          className="w-full rounded-lg border bg-muted/30 px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
         />
-        <div className="mt-3 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-lg px-3 py-1 text-xs text-muted-foreground hover:bg-accent"
-          >
+        <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+          <Button type="button" variant="outline" onClick={onCancel}>
             Cancelar
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            onClick={() => void onConfirm()}
             disabled={!value.trim() || loading}
-            className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50"
+            onClick={() => void onConfirm()}
           >
-            {loading && <Loader2 size={11} className="animate-spin" />}
-            Crear
-          </button>
+            {loading ? (
+              <>
+                <Loader2 className="size-3.5 animate-spin" />
+                Creando…
+              </>
+            ) : (
+              "Crear"
+            )}
+          </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

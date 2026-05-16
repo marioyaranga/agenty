@@ -18,9 +18,18 @@ import json
 from flask import Blueprint, Response, current_app, jsonify, request, stream_with_context
 
 from agent.graph import build_agent_graph
-from agent.persistence import finalize_agent_run, insert_agent_run, list_agent_steps_for_run
+from agent.agent_steps_ui import (
+    format_agent_steps_for_ui,
+    tool_detail_from_result,
+    tool_label_description,
+)
+from agent.persistence import (
+    finalize_agent_run,
+    insert_agent_run,
+    list_agent_steps_for_run,
+    list_agent_steps_for_runs,
+)
 from agent_chat_models import get_agent_chat_model_for_tenant  # noqa: F401 — usado fuera del chat endpoint
-from seo.seo_steps import format_seo_steps_for_ui
 from agent.tracing import (
     finish_langsmith_root,
     langsmith_api_key_configured,
@@ -338,6 +347,22 @@ def get_thread(tenant_id: str, thread_id: str):
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": "Fallo al cargar los runs", "detail": str(exc)}), 502
 
+    raw_runs = list(runs_res.data or [])
+    run_ids = [str(r.get("id")) for r in raw_runs if r.get("id")]
+
+    steps_by_run: dict[str, list[dict[str, Any]]] = {rid: [] for rid in run_ids}
+    try:
+        all_steps = list_agent_steps_for_runs(client, run_ids)
+        grouped: dict[str, list[dict[str, Any]]] = {rid: [] for rid in run_ids}
+        for row in all_steps:
+            rid = str(row.get("run_id") or "")
+            if rid in grouped:
+                grouped[rid].append(row)
+        for rid, rows in grouped.items():
+            steps_by_run[rid] = format_agent_steps_for_ui(rows)
+    except Exception as exc:  # noqa: BLE001
+        current_app.logger.warning("get_thread: no se pudieron cargar agent_steps: %s", exc)
+
     runs = [
         {
             "run_id": r.get("id"),
@@ -346,8 +371,9 @@ def get_thread(tenant_id: str, thread_id: str):
             "status": r.get("status"),
             "citations": r.get("citations") or [],
             "created_at": r.get("created_at"),
+            "steps": steps_by_run.get(str(r.get("id")), []),
         }
-        for r in (runs_res.data or [])
+        for r in raw_runs
     ]
 
     return jsonify({**thread, "runs": runs}), 200
@@ -506,6 +532,13 @@ def agent_chat(tenant_id: str):
     run_id = str(uuid.uuid4())
 
     # --- Generador SSE (ejecuta el grafo en streaming) ---
+    # Contrato SSE (líneas `data: {json}`):
+    # - ack: reconocimiento rápido { text }
+    # - started: { run_id, thread_id }
+    # - step: nodo LangGraph { node, label, description, status: running|done }
+    # - tool: herramienta { tool_name, label, description, status: running|done, ok?, detail? }
+    # - done: respuesta final { answer, citations, steps[], run_id, thread_id, ... }
+    # - error: { detail, run_id?, thread_id? }
     def generate_sse():  # noqa: C901
         ls_root: Any = None
         trace_id: str | None = None
@@ -576,17 +609,51 @@ def agent_chat(tenant_id: str):
                             continue
                         if isinstance(updates, dict):
                             accumulated.update(updates)
-                        lbl, desc = _NODE_SSE.get(node_name, (node_name, ""))
-                        yield _sse({"type": "step", "node": node_name, "status": "done", "label": lbl, "description": desc})
+
+                        if node_name != "execute_tool":
+                            lbl, desc = _NODE_SSE.get(node_name, (node_name, ""))
+                            yield _sse({"type": "step", "node": node_name, "status": "done", "label": lbl, "description": desc})
+
+                        if node_name == "execute_tool":
+                            tool_results = list(accumulated.get("tool_results") or [])
+                            if tool_results:
+                                last = tool_results[-1]
+                                tname = str(last.get("tool_name") or "")
+                                result = last.get("result") if isinstance(last.get("result"), dict) else {}
+                                t_lbl, t_desc = tool_label_description(tname)
+                                ok = bool(result.get("ok")) if isinstance(result, dict) else False
+                                detail = tool_detail_from_result(tname, result) if isinstance(result, dict) else ""
+                                yield _sse({
+                                    "type": "tool",
+                                    "tool_name": tname,
+                                    "label": t_lbl,
+                                    "description": t_desc,
+                                    "status": "done",
+                                    "ok": ok,
+                                    "detail": detail or None,
+                                })
+
                         next_n = _next_rag_node(node_name, accumulated, min_ok_sim=min_ok_sim, max_attempts=max_att)
                         if next_n:
-                            n_lbl, n_desc = _NODE_SSE.get(next_n, (next_n, ""))
-                            yield _sse({"type": "step", "node": next_n, "status": "running", "label": n_lbl, "description": n_desc})
+                            if next_n == "execute_tool":
+                                pending = str(accumulated.get("pending_tool_name") or "")
+                                if pending:
+                                    t_lbl, t_desc = tool_label_description(pending)
+                                    yield _sse({
+                                        "type": "tool",
+                                        "tool_name": pending,
+                                        "label": t_lbl,
+                                        "description": t_desc,
+                                        "status": "running",
+                                    })
+                            else:
+                                n_lbl, n_desc = _NODE_SSE.get(next_n, (next_n, ""))
+                                yield _sse({"type": "step", "node": next_n, "status": "running", "label": n_lbl, "description": n_desc})
 
                 answer = str(accumulated.get("answer") or "")
                 citations = list(accumulated.get("citations") or [])
                 step_rows = list_agent_steps_for_run(client, run_id)
-                steps = format_seo_steps_for_ui(step_rows)
+                steps = format_agent_steps_for_ui(step_rows)
 
                 finalize_agent_run(
                     client,

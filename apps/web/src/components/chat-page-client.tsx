@@ -6,13 +6,13 @@ import { AssistantRuntimeProvider, type ThreadMessageLike } from "@assistant-ui/
 import { useWorkspace } from "@/lib/contexts/workspace-context";
 import { useChatThreads } from "@/lib/contexts/chat-thread-context";
 import { useWorkyAiRuntime } from "@/lib/assistant-ui/workyai-runtime";
-import { SeoStepsProvider, useSeoSteps } from "@/lib/contexts/seo-steps-context";
+import { AgentStepsProvider, useAgentSteps } from "@/lib/contexts/agent-steps-context";
 import { MentionsProvider, useMentions } from "@/lib/contexts/mentions-context";
 import { getThread, type ThreadRun } from "@/lib/assistant-ui/threads-api";
 import { Thread } from "@/components/assistant-ui/thread";
 import { ChatHeader } from "@/components/chat/chat-header";
 import type { TenantOption } from "@/lib/types/tenant";
-import type { SeoSubagentStep } from "@/lib/types/seo-agent";
+import type { AgentRunStep } from "@/lib/types/agent-steps";
 
 type HydratedThread = {
   threadId: string | null;
@@ -33,7 +33,11 @@ function runsToMessages(runs: ThreadRun[]): ThreadMessageLike[] {
       role: "assistant",
       content: [{ type: "text", text: run.output_message }],
       metadata: {
-        custom: { citations: run.citations ?? [], run_id: run.run_id },
+        custom: {
+          citations: run.citations ?? [],
+          run_id: run.run_id,
+          steps: run.steps ?? [],
+        },
       },
     });
   }
@@ -60,11 +64,11 @@ export function ChatPageClient({
   }
 
   return (
-    <SeoStepsProvider>
+    <AgentStepsProvider>
       <MentionsProvider>
         <ChatManager tenantId={activeTenantId} initialThreadId={initialThreadId} />
       </MentionsProvider>
-    </SeoStepsProvider>
+    </AgentStepsProvider>
   );
 }
 
@@ -169,7 +173,8 @@ function ChatInner({
   onNewChat: () => void;
   onNewThread: (threadId: string) => void;
 }) {
-  const { onRunStart, onRunComplete, onRunEnd, onStepProgress } = useSeoSteps();
+  const { onRunStart, onRunComplete, onRunEnd, onStepProgress, onToolProgress } =
+    useAgentSteps();
   const { threads, upsertThread } = useChatThreads();
   const { mentionsRef, clearMentions } = useMentions();
 
@@ -192,7 +197,7 @@ function ChatInner({
   );
 
   const handleRunComplete = useCallback(
-    (turnIndex: number, steps: SeoSubagentStep[]) => {
+    (turnIndex: number, steps: AgentRunStep[]) => {
       onRunComplete(turnIndex, steps);
       clearMentions();
     },
@@ -201,7 +206,14 @@ function ChatInner({
 
   const { runtime } = useWorkyAiRuntime(
     tenantId,
-    { onRunStart, onRunComplete: handleRunComplete, onRunEnd, onThreadUpdate: handleThreadUpdate, onStepProgress },
+    {
+      onRunStart,
+      onRunComplete: handleRunComplete,
+      onRunEnd,
+      onThreadUpdate: handleThreadUpdate,
+      onStepProgress,
+      onToolProgress,
+    },
     initialMessages,
     activeThreadId,
     mentionsRef,
