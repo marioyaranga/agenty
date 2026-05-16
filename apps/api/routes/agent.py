@@ -95,28 +95,6 @@ def _next_rag_node(
     return None
 
 
-_ACK_PROMPT = (
-    "Sos un asistente de IA. El usuario te envió este mensaje:\n"
-    "\"{message}\"\n\n"
-    "Respondé SOLO con 1 frase corta en español (máximo 10 palabras) que reconozca "
-    "su pedido y muestre que lo estás procesando ahora. "
-    "No des la respuesta final. Sin comillas ni punto al final."
-)
-
-
-def _generate_quick_ack(message: str, api_key: str, model: str) -> str:
-    """Genera 1 frase de reconocimiento contextual con Gemini (rápido, Flash)."""
-    try:
-        from google import genai  # importación local para no romper si falla
-        prompt = _ACK_PROMPT.format(message=message[:400])
-        client = genai.Client(api_key=resolve_gemini_api_key(api_key=api_key))
-        resp = client.models.generate_content(model=model, contents=prompt)
-        text = (resp.text or "").strip() if hasattr(resp, "text") else ""
-        text = " ".join(text.splitlines()).strip().strip('"').strip()
-        return text[:120] if text else "Entendido, dame un momento."
-    except Exception:  # noqa: BLE001
-        return "Entendido, dame un momento."
-
 
 def _read_float_env(name: str, default: float) -> float:
     raw = (os.environ.get(name) or "").strip()
@@ -572,10 +550,6 @@ def agent_chat(tenant_id: str):
                     user_id=user_id,
                     langsmith_parent=ls_root,
                 )
-
-                # Reconocimiento contextual generado por Gemini (antes de insert para minimizar latencia)
-                ack_text = _generate_quick_ack(message, gemini_key, chat_model)
-                yield _sse({"type": "ack", "text": ack_text})
 
                 insert_agent_run(
                     client,

@@ -7,7 +7,6 @@ import type { AgentRunStep } from "@/lib/types/agent-steps";
 import type { Mention } from "@/lib/contexts/mentions-context";
 
 type AgentSseEvent =
-  | { type: "ack"; text: string }
   | { type: "started"; run_id: string; thread_id: string }
   | { type: "step"; node: string; label: string; description: string; status: "running" | "done" }
   | {
@@ -147,9 +146,7 @@ export function useWorkyAiRuntime(
                 continue;
               }
 
-              if (event.type === "ack") {
-                yield { content: [{ type: "text" as const, text: event.text }] };
-              } else if (event.type === "started") {
+              if (event.type === "started") {
                 threadIdRef.current = event.thread_id;
                 callbacks?.onThreadUpdate?.(event.thread_id);
               } else if (event.type === "step") {

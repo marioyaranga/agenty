@@ -289,7 +289,7 @@ def build_agent_graph(
         "tool_seo_search_volume",
         "tool_seo_serp_organic",
         "tool_seo_ranked_keywords_for_url",
-        "tool_seo_keywords_for_url",,
+        "tool_seo_keywords_for_url",
     })
 
     def execute_tool(state: AgentGraphState) -> dict[str, Any]:

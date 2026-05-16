@@ -114,8 +114,13 @@ function RunningStepsInline() {
   if (!steps?.isRunning || !steps.activeSteps?.length) return null;
 
   return (
-    <div className="flex w-full min-w-0 justify-start gap-3 pl-10">
-      <AgentStepsPanel steps={steps.activeSteps} defaultOpen />
+    <div className="flex w-full min-w-0 justify-start gap-3">
+      <div className="mt-1 flex size-7 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-foreground">
+        AI
+      </div>
+      <div className="min-w-0 max-w-[85%] flex-1">
+        <AgentStepsPanel steps={steps.activeSteps} defaultOpen />
+      </div>
     </div>
   );
 }

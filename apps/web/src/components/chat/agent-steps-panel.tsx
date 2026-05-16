@@ -69,7 +69,7 @@ function AgentStepRow({ step }: { step: AgentRunStep }) {
     <li
       className={cn(
         "flex gap-3 rounded-lg border border-transparent px-2 py-2",
-        step.status === "running" && "border-border bg-muted/40",
+        step.status === "running" && "border-border bg-background",
       )}
     >
       <StatusIcon status={step.status} />
@@ -78,26 +78,26 @@ function AgentStepRow({ step }: { step: AgentRunStep }) {
           <KindIcon kind={step.kind} />
           <p className="text-sm font-medium text-foreground">{step.label}</p>
           {step.kind === "tool" && step.tool_name ? (
-            <Badge variant="secondary" className="font-mono text-[10px]">
+            <Badge variant="secondary" className="font-mono text-xs">
               {step.tool_name.replace(/^tool_/, "")}
             </Badge>
           ) : null}
           {step.status === "completed" && step.kind === "tool" && step.detail?.startsWith("Error") ? (
-            <Badge variant="destructive" className="text-[10px]">
+            <Badge variant="destructive" className="text-xs">
               error
             </Badge>
           ) : null}
         </div>
-        <p className="text-xs text-muted-foreground">{step.description}</p>
+        <p className="text-sm leading-normal text-muted-foreground">{step.description}</p>
         {detail ? (
           longDetail ? (
             <ScrollArea className="mt-2 max-h-24 rounded-md border bg-muted/30 p-2">
-              <p className="min-w-0 break-words text-xs text-foreground/80 [overflow-wrap:anywhere]">
+              <p className="min-w-0 break-words text-sm leading-normal text-foreground/80 [overflow-wrap:anywhere]">
                 {detail}
               </p>
             </ScrollArea>
           ) : (
-            <p className="mt-1 min-w-0 break-words text-xs text-foreground/80 [overflow-wrap:anywhere]">
+            <p className="mt-1 min-w-0 break-words text-sm leading-normal text-foreground/80 [overflow-wrap:anywhere]">
               {detail}
             </p>
           )
@@ -129,9 +129,9 @@ export function AgentStepsPanel({
     <Collapsible
       open={open}
       onOpenChange={setOpen}
-      className={cn("w-full rounded-lg border bg-muted/20", className)}
+      className={cn("w-full min-w-0 rounded-2xl rounded-tl-sm border bg-card shadow-sm", className)}
     >
-      <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-muted/30">
+      <CollapsibleTrigger className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm font-medium text-foreground hover:bg-muted/30 rounded-2xl rounded-tl-sm data-[state=open]:rounded-b-none">
         {running ? (
           <Loader2 className="size-4 shrink-0 animate-spin text-primary" />
         ) : (
