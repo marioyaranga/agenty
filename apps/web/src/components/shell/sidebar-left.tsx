@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
+import { useRouter } from "next/navigation";
 
 import {
   Sidebar,
@@ -20,11 +21,12 @@ export function SidebarLeft({
   showAudit: boolean;
 }) {
   const { setActiveThreadId } = useChatThreads();
+  const router = useRouter();
 
-  // Pedimos al contexto que cambie el thread — ChatWithRuntime reacciona y hace switchToNewThread.
   const handleNewChat = useCallback(() => {
     setActiveThreadId(null);
-  }, [setActiveThreadId]);
+    router.push("/chat");
+  }, [setActiveThreadId, router]);
 
   const handleSelectThread = useCallback(
     (threadId: string) => {

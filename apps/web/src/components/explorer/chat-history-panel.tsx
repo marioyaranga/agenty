@@ -65,7 +65,7 @@ export function ChatHistoryPanel({
   const handleSelect = useCallback(
     (threadId: string) => {
       onSelectThread(threadId);
-      router.push("/chat");
+      router.push(`/chat/${threadId}`);
     },
     [onSelectThread, router],
   );
@@ -74,13 +74,15 @@ export function ChatHistoryPanel({
     async (threadId: string) => {
       const confirmed = window.confirm("¿Eliminar esta conversación?");
       if (!confirmed) return;
+      const wasActive = activeThreadId === threadId;
       try {
         await removeThread(threadId);
+        if (wasActive) router.push("/chat");
       } catch {
         /* silencioso */
       }
     },
-    [removeThread],
+    [removeThread, activeThreadId, router],
   );
 
   const closeRenameDialog = useCallback(() => {

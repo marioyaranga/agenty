@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AssistantRuntimeProvider, type ThreadMessageLike } from "@assistant-ui/react";
 import { useWorkspace } from "@/lib/contexts/workspace-context";
 import { useChatThreads } from "@/lib/contexts/chat-thread-context";
 import { useWorkyAiRuntime } from "@/lib/assistant-ui/workyai-runtime";
 import { SeoStepsProvider, useSeoSteps } from "@/lib/contexts/seo-steps-context";
-import { MentionsProvider, useMentions, type Mention } from "@/lib/contexts/mentions-context";
+import { MentionsProvider, useMentions } from "@/lib/contexts/mentions-context";
 import { getThread, type ThreadRun } from "@/lib/assistant-ui/threads-api";
 import { Thread } from "@/components/assistant-ui/thread";
 import { ChatHeader } from "@/components/chat/chat-header";
@@ -39,7 +40,13 @@ function runsToMessages(runs: ThreadRun[]): ThreadMessageLike[] {
   return messages;
 }
 
-export function ChatPageClient({ tenants }: { tenants: TenantOption[] }) {
+export function ChatPageClient({
+  tenants,
+  initialThreadId,
+}: {
+  tenants: TenantOption[];
+  initialThreadId?: string;
+}) {
   const { activeTenantId } = useWorkspace();
 
   if (!activeTenantId) {
@@ -55,34 +62,45 @@ export function ChatPageClient({ tenants }: { tenants: TenantOption[] }) {
   return (
     <SeoStepsProvider>
       <MentionsProvider>
-        <ChatManager tenantId={activeTenantId} />
+        <ChatManager tenantId={activeTenantId} initialThreadId={initialThreadId} />
       </MentionsProvider>
     </SeoStepsProvider>
   );
 }
 
-function ChatManager({ tenantId }: { tenantId: string }) {
-  const { activeThreadId, setActiveThreadId } = useChatThreads();
-  // null = fetch en curso; objeto = listo para montar ChatInner con datos consistentes.
-  const [hydrated, setHydrated] = useState<HydratedThread | null>({
-    threadId: null,
-    messages: [],
-    title: null,
-  });
+function ChatManager({
+  tenantId,
+  initialThreadId,
+}: {
+  tenantId: string;
+  initialThreadId?: string;
+}) {
+  const { setActiveThreadId } = useChatThreads();
+  const router = useRouter();
 
-  // Hidratar de forma atómica: no montar ChatInner hasta tener threadId + messages sincronizados.
+  // Sincroniza el highlight del sidebar con el thread de la URL.
   useEffect(() => {
-    if (!activeThreadId) {
+    setActiveThreadId(initialThreadId ?? null);
+  }, [initialThreadId, setActiveThreadId]);
+
+  // null = fetch en curso; objeto = listo para montar ChatInner con datos consistentes.
+  const [hydrated, setHydrated] = useState<HydratedThread | null>(
+    initialThreadId ? null : { threadId: null, messages: [], title: null },
+  );
+
+  // Hidratar de forma atómica basado en el param de URL, no en el contexto.
+  useEffect(() => {
+    if (!initialThreadId) {
       setHydrated({ threadId: null, messages: [], title: null });
       return;
     }
     let cancelled = false;
     setHydrated(null); // loading
-    getThread(tenantId, activeThreadId)
+    getThread(tenantId, initialThreadId)
       .then((detail) => {
         if (!cancelled)
           setHydrated({
-            threadId: activeThreadId,
+            threadId: initialThreadId,
             messages: runsToMessages(detail.runs),
             title: detail.title,
           });
@@ -90,17 +108,30 @@ function ChatManager({ tenantId }: { tenantId: string }) {
       .catch(() => {
         if (!cancelled)
           setHydrated({
-            threadId: activeThreadId,
+            threadId: initialThreadId,
             messages: [],
             title: null,
           });
       });
-    return () => { cancelled = true; };
-  }, [activeThreadId, tenantId]);
+    return () => {
+      cancelled = true;
+    };
+  }, [initialThreadId, tenantId]);
 
   const handleNewChat = useCallback(() => {
     setActiveThreadId(null);
-  }, [setActiveThreadId]);
+    router.push("/chat");
+  }, [setActiveThreadId, router]);
+
+  // Cuando el primer mensaje crea un thread nuevo mid-stream: actualiza la URL
+  // sin provocar una navegación de Next.js (no remonta el componente).
+  const handleNewThread = useCallback(
+    (threadId: string) => {
+      window.history.replaceState(null, "", `/chat/${threadId}`);
+      setActiveThreadId(threadId);
+    },
+    [setActiveThreadId],
+  );
 
   if (!hydrated) {
     return (
@@ -118,6 +149,7 @@ function ChatManager({ tenantId }: { tenantId: string }) {
       threadTitleHint={hydrated.title}
       initialMessages={hydrated.messages}
       onNewChat={handleNewChat}
+      onNewThread={handleNewThread}
     />
   );
 }
@@ -128,12 +160,14 @@ function ChatInner({
   threadTitleHint,
   initialMessages,
   onNewChat,
+  onNewThread,
 }: {
   tenantId: string;
   activeThreadId: string | null;
   threadTitleHint: string | null;
   initialMessages: readonly ThreadMessageLike[];
   onNewChat: () => void;
+  onNewThread: (threadId: string) => void;
 }) {
   const { onRunStart, onRunComplete, onRunEnd, onStepProgress } = useSeoSteps();
   const { threads, upsertThread } = useChatThreads();
@@ -141,6 +175,7 @@ function ChatInner({
 
   const handleThreadUpdate = useCallback(
     (threadId: string) => {
+      onNewThread(threadId);
       if (threads.some((t) => t.id === threadId)) return;
       getThread(tenantId, threadId)
         .then((detail) =>
@@ -153,7 +188,7 @@ function ChatInner({
         )
         .catch(() => {});
     },
-    [threads, tenantId, upsertThread],
+    [threads, tenantId, upsertThread, onNewThread],
   );
 
   const handleRunComplete = useCallback(
