@@ -59,6 +59,7 @@ export function useWorkyAiRuntime(
   initialMessages?: readonly ThreadMessageLike[],
   initialThreadId?: string | null,
   mentionsRef?: MutableRefObject<Mention[]>,
+  webGroundingEnabledRef?: RefObject<boolean>,
 ) {
   const threadIdRef = useRef<string | null>(initialThreadId ?? null);
 
@@ -79,8 +80,12 @@ export function useWorkyAiRuntime(
 
       const turnIndex = messages.filter((m) => m.role === "assistant").length;
 
-      // Evita setState síncrono anidado con assistant-ui al enviar (React #185).
-      queueMicrotask(() => callbacksRef.current?.onRunStart?.());
+      // Evita setState durante la fase de rendering de React 19 (React #185).
+      // queueMicrotask corre dentro de los microtasks del scheduler de React 19
+      // y causa setState durante render. setTimeout empuja a macrotask (seguro).
+      setTimeout(() => {
+        if (!abortSignal.aborted) callbacksRef.current?.onRunStart?.();
+      }, 0);
 
       const supabase = createClient();
       const { data: sessionData } = await supabase.auth.getSession();
@@ -108,6 +113,7 @@ export function useWorkyAiRuntime(
                 name: m.name,
                 type: m.type,
               })),
+              web_grounding_enabled: webGroundingEnabledRef?.current ?? false,
             }),
           });
         } catch (fetchErr) {
@@ -205,7 +211,7 @@ export function useWorkyAiRuntime(
         callbacksRef.current?.onRunEnd?.();
       }
     },
-  }), [tenantId, callbacksRef]);
+  }), [tenantId, callbacksRef, webGroundingEnabledRef]);
 
   const runtimeOptions = useMemo(
     () => ({ initialMessages: initialMessages ?? [] }),
