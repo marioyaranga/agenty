@@ -241,7 +241,7 @@ def main():
     for r in results:
         totals[r["result"]["status"]] = totals.get(r["result"]["status"], 0) + 1
 
-    print(f"\n{'─' * 50}")
+    print(f"\n{'-' * 50}")
     print(f"Total: {len(results)} | ✓ {totals['pass']} | ✗ {totals['fail']} | ! {totals['error']} | - {totals['skip']}")
 
     # Guardar reporte

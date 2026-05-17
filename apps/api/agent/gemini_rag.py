@@ -249,7 +249,18 @@ def answer_with_gemini_with_tools(
     genai_client = genai.Client(api_key=key)
 
     tools = _build_tools_config(GEMINI_TOOL_DECLARATIONS, enable_web_search=enable_web_search)
-    config = genai_types.GenerateContentConfig(tools=tools) if tools else None
+    has_search = enable_web_search and any(getattr(t, "google_search", None) for t in tools)
+    has_fn = any(getattr(t, "function_declarations", None) for t in tools)
+    tool_config = (
+        genai_types.ToolConfig(include_server_side_tool_invocations=True)
+        if has_search and has_fn
+        else None
+    )
+    config = (
+        genai_types.GenerateContentConfig(tools=tools, tool_config=tool_config)
+        if tools
+        else None
+    )
 
     try:
         if config:
