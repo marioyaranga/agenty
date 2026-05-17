@@ -1,0 +1,49 @@
+cases:
+  - id: search_volume_single_keyword
+    description: El agente consulta volumen de búsqueda para una keyword
+    prompt: "¿Cuántas búsquedas mensuales tiene la keyword 'marketing digital'?"
+    expected_tools: [tool_seo_search_volume]
+    expected_behavior: El agente llama tool_seo_search_volume con keywords=['marketing digital']
+    tags: [seo, read_external, dataforseo]
+
+  - id: search_volume_multiple_keywords
+    description: El agente consulta volumen para varias keywords a la vez
+    prompt: "Dame el volumen de búsqueda mensual de estas palabras: 'ecommerce', 'tienda online', 'vender online'"
+    expected_tools: [tool_seo_search_volume]
+    expected_behavior: El agente llama tool_seo_search_volume con las 3 keywords en una sola llamada
+    tags: [seo, read_external, dataforseo]
+
+  - id: serp_organic_basic
+    description: El agente consulta el SERP orgánico de Google para una keyword
+    prompt: "¿Quiénes están rankeando en Google para 'zapatillas de running'?"
+    expected_tools: [tool_seo_serp_organic]
+    expected_behavior: El agente llama tool_seo_serp_organic con keyword='zapatillas de running'
+    tags: [seo, read_external, dataforseo]
+
+  - id: ranked_keywords_for_url
+    description: El agente obtiene keywords para las que rankea una URL
+    prompt: "¿Para qué palabras clave rankea https://www.mercadolibre.com.ar/?"
+    expected_tools: [tool_seo_ranked_keywords_for_url]
+    expected_behavior: El agente llama tool_seo_ranked_keywords_for_url con la URL correcta
+    tags: [seo, read_external, dataforseo]
+
+  - id: seo_combined_research
+    description: El agente combina search_volume y serp_organic en una sola consulta
+    prompt: "Para la keyword 'curso de python online': ¿cuántas búsquedas tiene y quiénes están en el top de Google?"
+    expected_tools: [tool_seo_search_volume, tool_seo_serp_organic]
+    expected_behavior: El agente llama ambas tools SEO (pueden ser paralelas o secuenciales)
+    tags: [seo, read_external, dataforseo, multi_tool]
+
+  - id: seo_trigger_words
+    description: El agente reconoce intención SEO con distintos trigger words
+    prompt: "¿Cuánto volumen tiene la búsqueda de 'seguro de auto'?"
+    expected_tools: [tool_seo_search_volume]
+    expected_behavior: El agente reconoce que 'volumen' y 'búsqueda' implican tool_seo_search_volume
+    tags: [seo, read_external, dataforseo]
+
+  - id: seo_no_tool_needed
+    description: El agente responde una pregunta conceptual de SEO sin usar tools
+    prompt: "¿Qué es el link building en SEO?"
+    expected_tools: []
+    expected_behavior: El agente responde desde su conocimiento sin llamar tools de DataForSEO
+    tags: [seo, no_tool]

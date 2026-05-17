@@ -1,0 +1,68 @@
+cases:
+  - id: list_folder_root
+    description: El agente lista el contenido de la carpeta raíz
+    prompt: "Listame los archivos y carpetas que hay en mi workspace"
+    expected_tools: [tool_list_folder]
+    expected_behavior: El agente llama tool_list_folder y devuelve un listado
+    tags: [docs, read_internal]
+
+  - id: create_folder
+    description: El agente crea una carpeta cuando se le pide explícitamente
+    prompt: "Creá una carpeta llamada 'eval-test-carpeta'"
+    expected_tools: [tool_create_folder]
+    expected_behavior: El agente llama tool_create_folder con name=eval-test-carpeta
+    tags: [docs, write_internal]
+    cleanup_hint: Borrar carpeta 'eval-test-carpeta' después del eval
+
+  - id: create_document
+    description: El agente crea un documento markdown
+    prompt: "Creá un documento llamado 'eval-test-doc' con el contenido: # Prueba\n\nEste es un documento de prueba."
+    expected_tools: [tool_create_document]
+    expected_behavior: El agente llama tool_create_document y confirma la creación
+    tags: [docs, write_internal]
+    cleanup_hint: Borrar documento 'eval-test-doc' después del eval
+
+  - id: read_document_by_mention
+    description: El agente lee un documento cuando se lo mencionan
+    prompt: "¿De qué trata este documento? Resume el contenido."
+    mentions_needed: true
+    expected_tools: []
+    expected_behavior: El agente responde usando el contexto RAG del documento mencionado, sin necesitar tool_read_document
+    tags: [docs, read_internal, rag]
+
+  - id: search_documents
+    description: El agente busca documentos por término
+    prompt: "Buscá documentos en mi workspace que hablen sobre SEO"
+    expected_tools: [tool_search_documents]
+    expected_behavior: El agente llama tool_search_documents con query relacionada a SEO
+    tags: [docs, read_internal]
+
+  - id: rename_document
+    description: El agente renombra un archivo cuando se le pide
+    prompt: "Renombrá el archivo 'eval-test-doc' a 'eval-test-doc-renamed'"
+    expected_tools: [tool_rename]
+    expected_behavior: El agente llama tool_rename con los nombres correctos
+    tags: [docs, write_internal]
+    requires: [create_document]
+    cleanup_hint: Borrar archivo 'eval-test-doc-renamed' después
+
+  - id: delete_document
+    description: El agente elimina un documento cuando se le pide
+    prompt: "Eliminá el documento llamado 'eval-test-doc-renamed'"
+    expected_tools: [tool_delete_document]
+    expected_behavior: El agente llama tool_delete_document y confirma la eliminación
+    tags: [docs, write_internal]
+
+  - id: delete_folder
+    description: El agente elimina una carpeta vacía
+    prompt: "Eliminá la carpeta 'eval-test-carpeta'"
+    expected_tools: [tool_delete_folder]
+    expected_behavior: El agente llama tool_delete_folder
+    tags: [docs, write_internal]
+
+  - id: no_docs_question
+    description: El agente responde una pregunta general sin llamar tools de docs
+    prompt: "¿Cuál es la capital de Francia?"
+    expected_tools: []
+    expected_behavior: El agente responde directamente sin llamar ninguna tool de docs
+    tags: [docs, no_tool]

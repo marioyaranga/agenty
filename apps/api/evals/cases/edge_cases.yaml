@@ -1,0 +1,68 @@
+cases:
+  - id: empty_message
+    description: El endpoint maneja un mensaje vacío sin crashear
+    prompt: ""
+    expected_tools: []
+    expected_behavior: El agente devuelve un evento 'done' o 'error' sin excepción 500
+    expect_error_or_done: true
+    tags: [edge, error_handling]
+
+  - id: very_long_message
+    description: El agente maneja un mensaje muy largo sin crashear
+    prompt: "Necesito que me ayudes con una consulta muy importante. Por favor analizá en detalle todos los aspectos posibles de la siguiente situación de marketing digital para una empresa que vende productos de consumo masivo en el mercado latinoamericano, específicamente en Argentina, Chile, Uruguay, Paraguay, Bolivia, Perú, Ecuador, Colombia y Venezuela. La empresa tiene presencia tanto en canales tradicionales como digitales y quiere mejorar su posicionamiento orgánico. ¿Qué estrategia de contenido SEO recomendarías considerando las diferencias culturales y lingüísticas de cada mercado?"
+    expected_tools: []
+    expected_behavior: El agente procesa el mensaje y responde sin error 500
+    tags: [edge, long_input]
+
+  - id: ambiguous_tool_intent
+    description: El agente no llama tools innecesarias ante preguntas ambiguas
+    prompt: "¿Qué hacés vos exactamente?"
+    expected_tools: []
+    expected_behavior: El agente describe sus capacidades sin llamar ninguna tool
+    tags: [edge, no_tool]
+
+  - id: mixed_language_prompt
+    description: El agente responde en español aunque el prompt mezcle idiomas
+    prompt: "Can you tell me what keywords I should use para mi tienda de ropa?"
+    expected_tools: []
+    expected_behavior: La respuesta está en español (campo answer del evento done)
+    tags: [edge, language]
+
+  - id: tool_with_missing_required_arg
+    description: El agente pide los datos faltantes en vez de crashear si no puede ejecutar la tool
+    prompt: "Consultá el SERP de Google"
+    expected_tools: []
+    expected_behavior: El agente pide al usuario que especifique la keyword en vez de llamar la tool con args vacíos
+    tags: [edge, validation, seo]
+
+  - id: conversational_followup
+    description: El agente mantiene el contexto de la conversación en el thread
+    prompt: "¿Y para 'marketing automation'?"
+    thread_requires_prior_turn: true
+    prior_prompt: "¿Cuántas búsquedas tiene 'email marketing'?"
+    expected_tools: [tool_seo_search_volume]
+    expected_behavior: El agente entiende que el followup se refiere a volumen de búsqueda, por el contexto del turno anterior
+    tags: [edge, multi_turn, seo]
+
+  - id: seo_tool_invalid_url
+    description: El agente maneja bien una URL malformada para ranked_keywords
+    prompt: "¿Para qué keywords rankea la URL 'esto no es una url'?"
+    expected_tools: [tool_seo_ranked_keywords_for_url]
+    expected_behavior: El agente intenta llamar la tool; la tool puede devolver error que el agente reporta al usuario limpiamente
+    tags: [edge, validation, seo]
+
+  - id: done_event_structure
+    description: El evento 'done' siempre tiene answer, run_id y thread_id
+    prompt: "Hola"
+    expected_tools: []
+    expected_behavior: El evento 'done' incluye los campos run_id, thread_id y answer (no vacío)
+    expected_done_fields: [run_id, thread_id, answer]
+    tags: [edge, protocol]
+
+  - id: started_event_first
+    description: El primer evento SSE siempre es 'started'
+    prompt: "¿Qué es el SEO on-page?"
+    expected_tools: []
+    expected_behavior: El primer evento del stream tiene type='started' con run_id y thread_id
+    expected_first_event: started
+    tags: [edge, protocol]

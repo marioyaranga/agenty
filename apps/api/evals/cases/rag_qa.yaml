@@ -1,0 +1,39 @@
+cases:
+  - id: rag_retrieval_attempt
+    description: El agente intenta retrieval ante una pregunta de conocimiento
+    prompt: "¿Qué estrategia de contenido tenemos definida?"
+    expected_tools: []
+    expected_behavior: El grafo ejecuta el nodo 'retrieve' (visible en steps SSE) antes de generar la respuesta
+    expected_steps: [retrieve]
+    tags: [rag, retrieval]
+
+  - id: rag_no_context_admission
+    description: El agente admite que no tiene información cuando el RAG no devuelve nada relevante
+    prompt: "¿Cuál es el presupuesto de marketing para el Q3 de 2027?"
+    expected_tools: []
+    expected_behavior: El agente indica claramente que no tiene información sobre ese tema en el workspace
+    tags: [rag, no_context]
+
+  - id: rag_with_specific_query
+    description: El agente usa el contexto RAG cuando la query es específica
+    prompt: "Resumime lo que dice el workspace sobre el público objetivo de la marca"
+    expected_tools: []
+    expected_behavior: El grafo ejecuta retrieve; si hay docs relevantes, los usa en la respuesta
+    expected_steps: [retrieve]
+    tags: [rag, retrieval]
+
+  - id: rag_rewrite_query
+    description: El agente reescribe la query si el primer retrieval no fue suficiente
+    prompt: "¿Qué dijimos sobre los competidores?"
+    expected_tools: []
+    expected_behavior: Si el primer retrieve no da contexto suficiente, se activa rewrite_query (visible en steps)
+    expected_steps: [retrieve]
+    tags: [rag, retrieval, rewrite]
+
+  - id: rag_plus_seo_tool
+    description: El agente combina RAG con tool SEO en la misma consulta
+    prompt: "¿Cuál es nuestra keyword principal y cuántas búsquedas tiene?"
+    expected_tools: [tool_seo_search_volume]
+    expected_behavior: El agente usa RAG para encontrar la keyword y luego llama tool_seo_search_volume
+    expected_steps: [retrieve]
+    tags: [rag, seo, multi_step]

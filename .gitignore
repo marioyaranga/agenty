@@ -49,3 +49,6 @@ yarn-error.log*
 
 # Cursor (workspace local)
 .cursor/
+
+# Evals — reportes de resultados (no commitear)
+apps/api/evals/results/*.json

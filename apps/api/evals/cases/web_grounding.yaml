@@ -1,0 +1,27 @@
+cases:
+  - id: web_grounding_current_event
+    description: El agente usa web grounding para responder sobre algo actual
+    prompt: "¿Cuáles son las últimas novedades de Google sobre SEO en 2025?"
+    web_grounding_enabled: true
+    expected_tools: []
+    expected_behavior: El evento 'done' incluye web_sources con al menos una URL
+    expected_web_sources: true
+    tags: [web_grounding]
+
+  - id: web_grounding_disabled_no_sources
+    description: Sin web grounding habilitado, no debe haber web_sources
+    prompt: "¿Cuáles son las últimas novedades de Google sobre SEO en 2025?"
+    web_grounding_enabled: false
+    expected_tools: []
+    expected_behavior: El evento 'done' no incluye web_sources (o el array está vacío)
+    expected_web_sources: false
+    tags: [web_grounding, disabled]
+
+  - id: web_grounding_factual_question
+    description: Web grounding responde preguntas factuales con fuentes
+    prompt: "¿Cuál es el precio actual del dólar en Argentina?"
+    web_grounding_enabled: true
+    expected_tools: []
+    expected_behavior: El agente devuelve una respuesta con web_sources que referencian fuentes externas
+    expected_web_sources: true
+    tags: [web_grounding]
