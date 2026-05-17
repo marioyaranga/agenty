@@ -44,7 +44,11 @@ def _check_env():
         sys.exit(1)
 
 
-def _load_cases(filter_files: list[str] | None, filter_tags: list[str] | None) -> list[dict]:
+def _load_cases(
+    filter_files: list[str] | None,
+    filter_tags: list[str] | None,
+    smoke_only: bool = False,
+) -> list[dict]:
     cases = []
     for path in sorted(CASES_DIR.glob("*.yaml")):
         if filter_files and path.stem not in filter_files:
@@ -52,6 +56,8 @@ def _load_cases(filter_files: list[str] | None, filter_tags: list[str] | None) -
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
         for case in data.get("cases", []):
             case["_file"] = path.stem
+            if smoke_only and not case.get("smoke"):
+                continue
             if filter_tags:
                 case_tags = case.get("tags", [])
                 if not any(t in case_tags for t in filter_tags):
@@ -197,14 +203,17 @@ def main():
     parser = argparse.ArgumentParser(description="Eval runner de workyAI agent")
     parser.add_argument("--cases", help="Archivos de casos separados por coma (sin .yaml)")
     parser.add_argument("--tags", help="Filtrar por tags separados por coma")
+    parser.add_argument("--suite", choices=["smoke", "full"], default="full",
+                        help="smoke: ~10 casos criticos (default tras deploys). full: 33 casos (antes/despues de refactor)")
     parser.add_argument("--verbose", "-v", action="store_true")
     parser.add_argument("--report", default=str(RESULTS_DIR), help="Directorio donde guardar el reporte JSON")
     args = parser.parse_args()
 
     filter_files = args.cases.split(",") if args.cases else None
     filter_tags = args.tags.split(",") if args.tags else None
+    smoke_only = args.suite == "smoke"
 
-    cases = _load_cases(filter_files, filter_tags)
+    cases = _load_cases(filter_files, filter_tags, smoke_only=smoke_only)
     if not cases:
         print("No se encontraron casos con los filtros dados.")
         sys.exit(0)

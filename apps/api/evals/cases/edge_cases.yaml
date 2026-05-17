@@ -65,4 +65,5 @@ cases:
     expected_tools: []
     expected_behavior: El primer evento del stream tiene type='started' con run_id y thread_id
     expected_first_event: started
+    smoke: true
     tags: [edge, protocol]

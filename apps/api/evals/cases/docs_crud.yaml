@@ -4,6 +4,7 @@ cases:
     prompt: "Listame los archivos y carpetas que hay en mi workspace"
     expected_tools: [tool_list_folder]
     expected_behavior: El agente llama tool_list_folder y devuelve un listado
+    smoke: true
     tags: [docs, read_internal]
 
   - id: create_folder
@@ -19,6 +20,7 @@ cases:
     prompt: "Creá un documento llamado 'eval-test-doc' con el contenido: # Prueba\n\nEste es un documento de prueba."
     expected_tools: [tool_create_document]
     expected_behavior: El agente llama tool_create_document y confirma la creación
+    smoke: true
     tags: [docs, write_internal]
     cleanup_hint: Borrar documento 'eval-test-doc' después del eval
 
@@ -65,4 +67,5 @@ cases:
     prompt: "¿Cuál es la capital de Francia?"
     expected_tools: []
     expected_behavior: El agente responde directamente sin llamar ninguna tool de docs
+    smoke: true
     tags: [docs, no_tool]

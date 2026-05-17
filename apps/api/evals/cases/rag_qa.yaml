@@ -5,6 +5,7 @@ cases:
     expected_tools: []
     expected_behavior: El grafo ejecuta el nodo 'retrieve' (visible en steps SSE) antes de generar la respuesta
     expected_steps: [retrieve]
+    smoke: true
     tags: [rag, retrieval]
 
   - id: rag_no_context_admission
@@ -12,6 +13,7 @@ cases:
     prompt: "¿Cuál es el presupuesto de marketing para el Q3 de 2027?"
     expected_tools: []
     expected_behavior: El agente indica claramente que no tiene información sobre ese tema en el workspace
+    smoke: true
     tags: [rag, no_context]
 
   - id: rag_with_specific_query

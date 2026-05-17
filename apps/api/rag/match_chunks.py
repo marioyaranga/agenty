@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from typing import Any
 
 from supabase import Client
@@ -17,7 +18,11 @@ def _get_or_embed(client: Client, query: str, *, api_key: str | None) -> list[fl
         hit = client.table("query_embedding_cache").select("embedding").eq("query_hash", q_hash).limit(1).execute()
         rows = hit.data or []
         if rows:
-            return list(rows[0]["embedding"])
+            emb = rows[0]["embedding"]
+            # pgvector devuelve el vector como string "[-0.02, 0.01, ...]" via REST
+            if isinstance(emb, str):
+                return json.loads(emb)
+            return list(emb)
     except Exception:  # noqa: BLE001
         pass
 
